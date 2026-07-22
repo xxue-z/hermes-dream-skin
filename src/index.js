@@ -63,7 +63,7 @@ export class DreamSkinPlugin {
       id: 'dream-skin-nav',
       area: 'sidebar.nav',
       data: {
-        codicon: 'paintbrush',
+        codicon: 'symbol-color',
         label: 'Dream Skin',
         path: '/dream-skin'
       }

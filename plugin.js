@@ -1,6 +1,6 @@
 /**
  * Hermes Dream Skin Plugin
- * Generated at: 2026-07-22T07:48:57.750Z
+ * Generated at: 2026-07-22T08:36:38.935Z
  */
 
 import React from 'react'
@@ -41,14 +41,14 @@ const STYLE_METADATA = {
   font: {
     family: { label: 'Font Family', type: 'text', default: 'system-ui' },
     size: { label: 'Font Size', type: 'range', min: 10, max: 24, unit: 'px', default: 14 },
-    color: { label: 'Font Color', type: 'color', default: '#ffffff' }
+    color: { label: 'Font Color', type: 'color', default: '#ffffff', hasOpacity: true }
   },
   background: {
-    color: { label: 'Background Color', type: 'color', default: '#000000' },
+    color: { label: 'Background Color', type: 'color', default: '#000000', hasOpacity: true },
     opacity: { label: 'Opacity', type: 'range', min: 0, max: 100, unit: '%', default: 80 }
   },
   border: {
-    color: { label: 'Border Color', type: 'color', default: '#333333' },
+    color: { label: 'Border Color', type: 'color', default: '#333333', hasOpacity: true },
     width: { label: 'Border Width', type: 'range', min: 0, max: 10, unit: 'px', default: 1 },
     radius: { label: 'Border Radius', type: 'range', min: 0, max: 24, unit: 'px', default: 8 }
   }
@@ -274,15 +274,11 @@ function PropertyGroup({ title, category, config, metadata, onChange, disabled }
         const value = config[key] !== undefined ? config[key] : meta.default
         return React.createElement('div', { key, className: 'flex items-center gap-3' },
           React.createElement('label', { className: 'w-24 text-xs text-gray-500 flex-shrink-0' }, meta.label),
-          meta.type === 'color' && React.createElement('div', { className: 'flex items-center gap-2 flex-1' },
-            React.createElement('input', {
-              type: 'color',
-              value,
-              onChange: (e) => onChange(category, key, e.target.value),
-              className: 'w-8 h-8 rounded border cursor-pointer'
-            }),
-            React.createElement('span', { className: 'text-xs text-gray-400 font-mono' }, value)
-          ),
+          meta.type === 'color' && React.createElement(ColorPicker, {
+            value,
+            meta,
+            onChange: (val) => onChange(category, key, val)
+          }),
           meta.type === 'range' && React.createElement('div', { className: 'flex items-center gap-2 flex-1' },
             React.createElement('input', {
               type: 'range',
@@ -320,6 +316,70 @@ function CSSPreview({ css }) {
       className: 'w-full h-40 p-3 text-xs font-mono bg-gray-900 text-green-400 rounded resize-none',
       style: { fontFamily: 'monospace', fontSize: '11px' }
     })
+  )
+}
+
+/**
+ * 颜色选择器组件（支持透明度）
+ */
+function ColorPicker({ value, meta, onChange }) {
+  const [localValue, setLocalValue] = React.useState(value || meta.default || '#ffffff')
+  const [localOpacity, setLocalOpacity] = React.useState(100)
+  
+  React.useEffect(() => {
+    setLocalValue(value || meta.default || '#ffffff')
+  }, [value, meta.default])
+
+  // 解析颜色值，获取 opacity
+  React.useEffect(() => {
+    if (typeof value === 'string' && value.length === 9 && value.startsWith('#')) {
+      // #RRGGBBAA format
+      const alphaHex = value.slice(7, 9)
+      const alpha = parseInt(alphaHex, 16) / 255
+      setLocalOpacity(Math.round(alpha * 100))
+    }
+  }, [value])
+
+  const handleColorChange = (e) => {
+    const newColor = e.target.value
+    setLocalValue(newColor)
+    if (meta.hasOpacity) {
+      // Append alpha
+      const alphaHex = Math.round((localOpacity / 100) * 255).toString(16).padStart(2, '0')
+      onChange(newColor + alphaHex)
+    } else {
+      onChange(newColor)
+    }
+  }
+
+  const handleOpacityChange = (e) => {
+    const opacity = Number(e.target.value)
+    setLocalOpacity(opacity)
+    if (meta.hasOpacity) {
+      const alphaHex = Math.round((opacity / 100) * 255).toString(16).padStart(2, '0')
+      onChange(localValue + alphaHex)
+    }
+  }
+
+  return React.createElement('div', { className: 'flex items-center gap-2 flex-1' },
+    React.createElement('input', {
+      type: 'color',
+      value: localValue.slice(0, 7), // 只取 #RRGGBB
+      onChange: handleColorChange,
+      className: 'w-8 h-8 rounded border cursor-pointer'
+    }),
+    React.createElement('span', { className: 'text-xs text-gray-400 font-mono w-24' }, localValue),
+    meta.hasOpacity && React.createElement('div', { className: 'flex items-center gap-1 flex-1' },
+      React.createElement('input', {
+        type: 'range',
+        min: 0,
+        max: 100,
+        value: localOpacity,
+        onChange: handleOpacityChange,
+        className: 'w-20'
+      }),
+      React.createElement('span', { className: 'text-xs text-gray-500 w-10 text-right font-mono' }, localOpacity + '%')
+    )
   )
 }
 
@@ -963,7 +1023,7 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
           onSave: handleSaveStyles,
           onCancel: () => setEditingTheme(null)
         })
-      : React.createElement(ScrollArea, { className: 'h-[300px]' },
+      : React.createElement(ScrollArea, { className: 'h-[calc(100vh-180px)]' },
           React.createElement('div', { className: 'space-y-2' },
             themes.length === 0
               ? React.createElement('p', { className: 'text-sm text-gray-500 text-center py-8' },
@@ -1138,7 +1198,7 @@ class DreamSkinPlugin {
       id: 'dream-skin-nav',
       area: 'sidebar.nav',
       data: {
-        codicon: 'paintbrush',
+        codicon: 'symbol-color',
         label: 'Dream Skin',
         path: '/dream-skin'
       }
