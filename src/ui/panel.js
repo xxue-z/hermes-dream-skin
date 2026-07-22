@@ -133,7 +133,7 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
           onSave: handleSaveStyles,
           onCancel: () => setEditingTheme(null)
         })
-      : React.createElement(ScrollArea, { className: 'h-[300px]' },
+      : React.createElement(ScrollArea, { className: 'h-[calc(100vh-180px)]' },
           React.createElement('div', { className: 'space-y-2' },
             themes.length === 0
               ? React.createElement('p', { className: 'text-sm text-gray-500 text-center py-8' },

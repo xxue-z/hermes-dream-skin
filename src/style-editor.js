@@ -218,15 +218,11 @@ function PropertyGroup({ title, category, config, metadata, onChange, disabled }
         const value = config[key] !== undefined ? config[key] : meta.default
         return React.createElement('div', { key, className: 'flex items-center gap-3' },
           React.createElement('label', { className: 'w-24 text-xs text-gray-500 flex-shrink-0' }, meta.label),
-          meta.type === 'color' && React.createElement('div', { className: 'flex items-center gap-2 flex-1' },
-            React.createElement('input', {
-              type: 'color',
-              value,
-              onChange: (e) => onChange(category, key, e.target.value),
-              className: 'w-8 h-8 rounded border cursor-pointer'
-            }),
-            React.createElement('span', { className: 'text-xs text-gray-400 font-mono' }, value)
-          ),
+          meta.type === 'color' && React.createElement(ColorPicker, {
+            value,
+            meta,
+            onChange: (val) => onChange(category, key, val)
+          }),
           meta.type === 'range' && React.createElement('div', { className: 'flex items-center gap-2 flex-1' },
             React.createElement('input', {
               type: 'range',
@@ -264,5 +260,69 @@ function CSSPreview({ css }) {
       className: 'w-full h-40 p-3 text-xs font-mono bg-gray-900 text-green-400 rounded resize-none',
       style: { fontFamily: 'monospace', fontSize: '11px' }
     })
+  )
+}
+
+/**
+ * 颜色选择器组件（支持透明度）
+ */
+function ColorPicker({ value, meta, onChange }) {
+  const [localValue, setLocalValue] = React.useState(value || meta.default || '#ffffff')
+  const [localOpacity, setLocalOpacity] = React.useState(100)
+  
+  React.useEffect(() => {
+    setLocalValue(value || meta.default || '#ffffff')
+  }, [value, meta.default])
+
+  // 解析颜色值，获取 opacity
+  React.useEffect(() => {
+    if (typeof value === 'string' && value.length === 9 && value.startsWith('#')) {
+      // #RRGGBBAA format
+      const alphaHex = value.slice(7, 9)
+      const alpha = parseInt(alphaHex, 16) / 255
+      setLocalOpacity(Math.round(alpha * 100))
+    }
+  }, [value])
+
+  const handleColorChange = (e) => {
+    const newColor = e.target.value
+    setLocalValue(newColor)
+    if (meta.hasOpacity) {
+      // Append alpha
+      const alphaHex = Math.round((localOpacity / 100) * 255).toString(16).padStart(2, '0')
+      onChange(newColor + alphaHex)
+    } else {
+      onChange(newColor)
+    }
+  }
+
+  const handleOpacityChange = (e) => {
+    const opacity = Number(e.target.value)
+    setLocalOpacity(opacity)
+    if (meta.hasOpacity) {
+      const alphaHex = Math.round((opacity / 100) * 255).toString(16).padStart(2, '0')
+      onChange(localValue + alphaHex)
+    }
+  }
+
+  return React.createElement('div', { className: 'flex items-center gap-2 flex-1' },
+    React.createElement('input', {
+      type: 'color',
+      value: localValue.slice(0, 7), // 只取 #RRGGBB
+      onChange: handleColorChange,
+      className: 'w-8 h-8 rounded border cursor-pointer'
+    }),
+    React.createElement('span', { className: 'text-xs text-gray-400 font-mono w-24' }, localValue),
+    meta.hasOpacity && React.createElement('div', { className: 'flex items-center gap-1 flex-1' },
+      React.createElement('input', {
+        type: 'range',
+        min: 0,
+        max: 100,
+        value: localOpacity,
+        onChange: handleOpacityChange,
+        className: 'w-20'
+      }),
+      React.createElement('span', { className: 'text-xs text-gray-500 w-10 text-right font-mono' }, localOpacity + '%')
+    )
   )
 }

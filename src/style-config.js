@@ -33,14 +33,14 @@ export const STYLE_METADATA = {
   font: {
     family: { label: 'Font Family', type: 'text', default: 'system-ui' },
     size: { label: 'Font Size', type: 'range', min: 10, max: 24, unit: 'px', default: 14 },
-    color: { label: 'Font Color', type: 'color', default: '#ffffff' }
+    color: { label: 'Font Color', type: 'color', default: '#ffffff', hasOpacity: true }
   },
   background: {
-    color: { label: 'Background Color', type: 'color', default: '#000000' },
+    color: { label: 'Background Color', type: 'color', default: '#000000', hasOpacity: true },
     opacity: { label: 'Opacity', type: 'range', min: 0, max: 100, unit: '%', default: 80 }
   },
   border: {
-    color: { label: 'Border Color', type: 'color', default: '#333333' },
+    color: { label: 'Border Color', type: 'color', default: '#333333', hasOpacity: true },
     width: { label: 'Border Width', type: 'range', min: 0, max: 10, unit: 'px', default: 1 },
     radius: { label: 'Border Radius', type: 'range', min: 0, max: 24, unit: 'px', default: 8 }
   }
