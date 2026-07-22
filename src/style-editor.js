@@ -68,8 +68,14 @@ function generatePreviewCSS(draftStyles) {
 
 /**
  * 样式编辑器主组件
+ *
+ * @param {Object} props
+ * @param {Object} [props.theme] - 编辑时的主题（可选）
+ * @param {Function} props.onSave - 保存回调，接收 styles 参数
+ * @param {Function} props.onCancel - 取消回调
+ * @param {boolean} [props.isNew=false] - 是否为新建模式（顶部显示保存按钮）
  */
-export function StyleEditor({ theme, onSave, onCancel }) {
+export function StyleEditor({ theme, onSave, onCancel, isNew = false }) {
   const [activeTab, setActiveTab] = React.useState('global')
   const [draftStyles, setDraftStyles] = React.useState(() =>
     JSON.parse(JSON.stringify(theme?.styles || DEFAULT_STYLES))
@@ -105,6 +111,18 @@ export function StyleEditor({ theme, onSave, onCancel }) {
   }, [activeTab])
 
   return React.createElement('div', { className: 'space-y-4' },
+    // 新建模式：顶部操作栏
+    isNew && React.createElement('div', { className: 'flex items-center gap-2 pt-2 border-t' },
+      React.createElement('button', {
+        onClick: () => onSave(draftStyles),
+        className: 'px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium'
+      }, 'Save Theme'),
+      React.createElement('button', {
+        onClick: onCancel,
+        className: 'px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-sm'
+      }, 'Cancel')
+    ),
+
     // 标签栏
     React.createElement('div', { className: 'flex gap-1 border-b pb-2 overflow-x-auto' },
       TABS.map(tab =>
@@ -128,19 +146,19 @@ export function StyleEditor({ theme, onSave, onCancel }) {
       }),
 
       // CSS 预览
-      React.createElement(CSSPreview, { css: previewCSS }),
+      React.createElement(CSSPreview, { css: previewCSS })
+    ),
 
-      // 操作按钮
-      React.createElement('div', { className: 'flex gap-2 pt-2 border-t' },
-        React.createElement('button', {
-          onClick: () => onSave(draftStyles),
-          className: 'px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium'
-        }, '保存'),
-        React.createElement('button', {
-          onClick: onCancel,
-          className: 'px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-sm'
-        }, '取消')
-      )
+    // 编辑模式：底部操作栏
+    !isNew && React.createElement('div', { className: 'flex gap-2 pt-2 border-t' },
+      React.createElement('button', {
+        onClick: () => onSave(draftStyles),
+        className: 'px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium'
+      }, '保存'),
+      React.createElement('button', {
+        onClick: onCancel,
+        className: 'px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-sm'
+      }, '取消')
     )
   )
 }
