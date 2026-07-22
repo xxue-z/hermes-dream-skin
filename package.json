@@ -1,0 +1,13 @@
+{
+  "name": "hermes-dream-skin",
+  "version": "1.0.0",
+  "description": "Codex Dream Skin style background and atmosphere themes for Hermes Desktop",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --watch"
+  },
+  "keywords": ["hermes", "plugin", "theme", "skin"],
+  "author": "",
+  "license": "MIT"
+}

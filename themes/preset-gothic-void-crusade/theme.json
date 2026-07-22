@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "preset-gothic-void-crusade",
+  "name": "Gothic Void Crusade",
+  "description": "Deep space gothic atmosphere with crimson accents",
+  "image": "background.jpg",
+  "appearance": "dark",
+  "art": {
+    "focusX": 0.5,
+    "focusY": 0.35,
+    "safeArea": "center",
+    "taskMode": "ambient"
+  },
+  "palette": {
+    "accent": "#8b0000",
+    "accentInk": "#ffcccc"
+  }
+}
