@@ -3,7 +3,7 @@
  *
  * 负责：
  * 1. 初始化主题管理器
- * 2. 注册 UI 面板到侧边栏
+ * 2. 注册路由和侧边栏导航项
  * 3. 注入 CSS
  * 4. 监听主题变化
  */
@@ -33,7 +33,7 @@ export class DreamSkinPlugin {
       this.cssInjector.applyTheme(activeTheme)
     }
 
-    // 4. 注册侧边栏面板
+    // 4. 注册路由和侧边栏导航
     this.registerPanel()
 
     // 5. 监听主题变化事件
@@ -45,14 +45,12 @@ export class DreamSkinPlugin {
   }
 
   registerPanel() {
-    // 注册一个左侧面板
-    const dispose = this.ctx.register({
-      id: 'dream-skin-panel',
-      area: 'panes',
-      title: 'Dream Skin',
+    // 注册路由
+    const routeDispose = this.ctx.register({
+      id: 'dream-skin-route',
+      area: 'routes',
       data: {
-        placement: 'left',
-        dock: { pane: 'sessions', pos: 'bottom' }
+        path: '/dream-skin'
       },
       render: () => createPanel({
         themeManager: this.themeManager,
@@ -60,7 +58,18 @@ export class DreamSkinPlugin {
       })
     })
 
-    this.disposers.push(dispose)
+    // 注册侧边栏导航项
+    const navDispose = this.ctx.register({
+      id: 'dream-skin-nav',
+      area: 'sidebar.nav',
+      data: {
+        codicon: 'paintbrush',
+        label: 'Dream Skin',
+        path: '/dream-skin'
+      }
+    })
+
+    this.disposers.push(routeDispose, navDispose)
   }
 
   dispose() {

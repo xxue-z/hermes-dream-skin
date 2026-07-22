@@ -52,6 +52,9 @@ function buildPlugin() {
   // 添加插件入口注释
   output += `/**\n * Hermes Dream Skin Plugin\n * Generated at: ${new Date().toISOString()}\n */\n\n`
 
+  // 导入 React（Hermes Desktop 插件环境可用）
+  output += `import React from 'react'\n\n`
+
   for (const fileInfo of files) {
     const filePath = path.join(srcDir, fileInfo.path)
 
