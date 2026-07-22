@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "preset-arina-hashimoto",
+  "name": "Arina Hashimoto",
+  "description": "Soft pastel dreamscape with warm lighting",
+  "image": "background.jpg",
+  "appearance": "auto",
+  "art": {
+    "focusX": 0.5,
+    "focusY": 0.35,
+    "safeArea": "center",
+    "taskMode": "ambient"
+  },
+  "palette": {
+    "accent": "#e8a0bf",
+    "accentInk": "#4a1a2e"
+  }
+}

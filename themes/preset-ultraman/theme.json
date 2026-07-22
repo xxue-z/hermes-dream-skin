@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "preset-ultraman",
+  "name": "奥特曼",
+  "description": "光之巨人与你的代码世界并肩作战。",
+  "image": "background.jpg",
+  "appearance": "auto",
+  "art": {
+    "focusX": 0.50,
+    "focusY": 0.35,
+    "safeArea": "center",
+    "taskMode": "ambient"
+  },
+  "palette": {
+    "accent": "#0053FD",
+    "accentInk": "#FCFCFC"
+  }
+}
