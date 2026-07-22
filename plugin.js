@@ -1,6 +1,6 @@
 /**
  * Hermes Dream Skin Plugin
- * Generated at: 2026-07-22T08:45:15.337Z
+ * Generated at: 2026-07-22T08:52:42.399Z
  */
 
 import React from 'react'
@@ -167,16 +167,12 @@ function StyleEditor({ theme, onSave, onCancel, isNew = false }) {
   }, [activeTab])
 
   return React.createElement('div', { className: 'space-y-4' },
-    // 新建模式：顶部操作栏
+    // 新建模式：顶部操作栏（只保留 Save Theme，Back 按钮在 panel 中）
     isNew && React.createElement('div', { className: 'flex items-center gap-2 pt-2 border-t' },
       React.createElement('button', {
         onClick: () => onSave(draftStyles),
         className: 'px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium'
-      }, 'Save Theme'),
-      React.createElement('button', {
-        onClick: onCancel,
-        className: 'px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-sm'
-      }, 'Cancel')
+      }, 'Save Theme')
     ),
 
     // 标签栏
@@ -338,7 +334,7 @@ function CSSPreview({ css }) {
 }
 
 /**
- * 颜色选择器组件（支持透明度）
+ * 颜色选择器组件（支持透明度，紧凑集成）
  */
 function ColorPicker({ value, meta, onChange }) {
   const [localValue, setLocalValue] = React.useState(value || meta.default || '#ffffff')
@@ -351,7 +347,6 @@ function ColorPicker({ value, meta, onChange }) {
   // 解析颜色值，获取 opacity
   React.useEffect(() => {
     if (typeof value === 'string' && value.length === 9 && value.startsWith('#')) {
-      // #RRGGBBAA format
       const alphaHex = value.slice(7, 9)
       const alpha = parseInt(alphaHex, 16) / 255
       setLocalOpacity(Math.round(alpha * 100))
@@ -362,7 +357,6 @@ function ColorPicker({ value, meta, onChange }) {
     const newColor = e.target.value
     setLocalValue(newColor)
     if (meta.hasOpacity) {
-      // Append alpha
       const alphaHex = Math.round((localOpacity / 100) * 255).toString(16).padStart(2, '0')
       onChange(newColor + alphaHex)
     } else {
@@ -379,24 +373,48 @@ function ColorPicker({ value, meta, onChange }) {
     }
   }
 
-  return React.createElement('div', { className: 'flex items-center gap-2 flex-1' },
-    React.createElement('input', {
-      type: 'color',
-      value: localValue.slice(0, 7), // 只取 #RRGGBB
-      onChange: handleColorChange,
-      className: 'w-8 h-8 rounded border cursor-pointer'
-    }),
-    React.createElement('span', { className: 'text-xs text-gray-400 font-mono w-24' }, localValue),
-    meta.hasOpacity && React.createElement('div', { className: 'flex items-center gap-1 flex-1' },
+  return React.createElement('div', { className: 'flex items-center gap-3 flex-1' },
+    // 颜色预览区域（含透明度）
+    React.createElement('div', {
+      className: 'relative w-8 h-8 rounded border overflow-hidden cursor-pointer flex-shrink-0',
+      style: {
+        backgroundColor: localValue.slice(0, 7),
+        opacity: meta.hasOpacity ? localOpacity / 100 : 1
+      }
+    },
       React.createElement('input', {
-        type: 'range',
-        min: 0,
-        max: 100,
-        value: localOpacity,
-        onChange: handleOpacityChange,
-        className: 'w-20'
-      }),
-      React.createElement('span', { className: 'text-xs text-gray-500 w-10 text-right font-mono' }, localOpacity + '%')
+        type: 'color',
+        value: localValue.slice(0, 7),
+        onChange: handleColorChange,
+        className: 'absolute inset-0 w-full h-full opacity-0 cursor-pointer'
+      })
+    ),
+    // 颜色值 + 透明度（紧凑排列）
+    React.createElement('div', { className: 'flex items-center gap-2 flex-1 min-w-0' },
+      // 颜色值
+      React.createElement('span', { 
+        className: 'text-xs text-gray-400 font-mono flex-shrink-0',
+        style: { minWidth: '60px' }
+      }, localValue.slice(0, 7)),
+      // 透明度滑块（紧凑）
+      meta.hasOpacity && React.createElement('div', { 
+        className: 'flex items-center gap-1 flex-1 min-w-0',
+        style: { maxWidth: '120px' }
+      },
+        React.createElement('input', {
+          type: 'range',
+          min: 0,
+          max: 100,
+          value: localOpacity,
+          onChange: handleOpacityChange,
+          className: 'flex-1',
+          style: { height: '4px' }
+        }),
+        React.createElement('span', { 
+          className: 'text-xs text-gray-500 font-mono flex-shrink-0',
+          style: { minWidth: '32px', textAlign: 'right' }
+        }, localOpacity + '%')
+      )
     )
   )
 }
