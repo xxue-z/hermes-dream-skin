@@ -3,14 +3,14 @@
  *
  * 提供主题管理界面：
  * - 主题列表（选中态以边框颜色区分）
- * - 添加主题
+ * - 添加主题（内联页面，含名称、背景图、样式编辑）
  * - 删除主题
  * - 样式编辑器（字体、颜色、背景、边框等可视化配置）
  */
 
 import { StyleEditor } from '../style-editor.js'
 
-const { Button, Input, Dialog, DialogContent, DialogHeader, DialogTitle, ScrollArea } = window.__HERMES_PLUGIN_SDK__
+const { Button, Input, ScrollArea } = window.__HERMES_PLUGIN_SDK__
 
 export function createPanel({ themeManager, cssInjector }) {
   return React.createElement(DreamSkinPanel, { themeManager, cssInjector })
@@ -19,10 +19,13 @@ export function createPanel({ themeManager, cssInjector }) {
 function DreamSkinPanel({ themeManager, cssInjector }) {
   const [themes, setThemes] = React.useState(() => themeManager.getAllThemes())
   const [activeTheme, setActiveTheme] = React.useState(() => themeManager.getActiveTheme())
+  const [view, setView] = React.useState('list') // 'list' | 'add' | 'edit'
   const [editingTheme, setEditingTheme] = React.useState(null)
-  const [showAddDialog, setShowAddDialog] = React.useState(false)
+
+  // 新增主题状态
   const [newThemeName, setNewThemeName] = React.useState('')
   const [selectedFile, setSelectedFile] = React.useState(null)
+  const [newStyles, setNewStyles] = React.useState(null)
 
   // 刷新主题列表
   const refreshThemes = React.useCallback(() => {
@@ -48,9 +51,18 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
     }
   }
 
-  // 添加主题
-  const handleAddTheme = async () => {
+  // 开始添加主题
+  const handleStartAdd = () => {
+    setNewThemeName('')
+    setSelectedFile(null)
+    setNewStyles(null)
+    setView('add')
+  }
+
+  // 保存新增主题
+  const handleSaveNewTheme = async (styles) => {
     if (!selectedFile || !newThemeName.trim()) {
+      alert('Please enter a theme name and select an image')
       return
     }
 
@@ -59,21 +71,48 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
         name: newThemeName.trim()
       })
 
+      // 如果有自定义样式，保存
+      if (styles) {
+        themeManager.updateThemeStyles(theme.id, styles)
+      }
+
       // 自动切换到新主题
       themeManager.setActiveTheme(theme.id)
       cssInjector.applyTheme(theme)
 
-      // 重置表单
+      // 重置并返回列表
       setNewThemeName('')
       setSelectedFile(null)
-      setShowAddDialog(false)
-
-      // 刷新列表
+      setNewStyles(null)
+      setView('list')
       refreshThemes()
     } catch (e) {
       console.error('[Dream Skin] Failed to add theme:', e)
       alert(`Failed to add theme: ${e.message}`)
     }
+  }
+
+  // 开始编辑主题
+  const handleStartEdit = (theme) => {
+    setEditingTheme(theme)
+    setView('edit')
+  }
+
+  // 保存编辑的主题
+  const handleSaveEdit = (styles) => {
+    if (!editingTheme) return
+
+    themeManager.updateThemeStyles(editingTheme.id, styles)
+
+    // 如果是当前激活的主题，重新应用
+    const active = themeManager.getActiveTheme()
+    if (active?.id === editingTheme.id) {
+      cssInjector.applyTheme(active)
+    }
+
+    setEditingTheme(null)
+    setView('list')
+    refreshThemes()
   }
 
   // 删除主题
@@ -94,112 +133,126 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
     }
   }
 
-  // 打开样式编辑器
-  const handleEditTheme = (theme) => {
-    setEditingTheme(theme)
-  }
-
-  // 保存样式
-  const handleSaveStyles = (styles) => {
-    if (!editingTheme) return
-
-    themeManager.updateThemeStyles(editingTheme.id, styles)
-
-    // 如果是当前激活的主题，重新应用
-    const active = themeManager.getActiveTheme()
-    if (active?.id === editingTheme.id) {
-      cssInjector.applyTheme(active)
-    }
-
-    setEditingTheme(null)
-    refreshThemes()
-  }
-
   return React.createElement('div', { className: 'p-4 space-y-4' },
-    // 标题
-    React.createElement('h2', { className: 'text-lg font-semibold' }, 'Dream Skin'),
+    // 标题（列表视图显示）
+    view === 'list' && React.createElement('h2', { className: 'text-lg font-semibold' }, 'Dream Skin'),
 
-    // 添加主题按钮
-    React.createElement(Button, {
-      onClick: () => setShowAddDialog(true),
-      className: 'w-full'
-    }, 'Add Theme'),
+    // 列表视图
+    view === 'list' && React.createElement(React.Fragment, null,
+      // 添加主题按钮
+      React.createElement(Button, {
+        onClick: handleStartAdd,
+        className: 'w-full'
+      }, 'Add Theme'),
 
-    // 如果正在编辑，显示样式编辑器；否则显示主题列表
-    editingTheme
-      ? React.createElement(StyleEditor, {
-          key: editingTheme.id,
-          theme: editingTheme,
-          onSave: handleSaveStyles,
-          onCancel: () => setEditingTheme(null)
-        })
-      : React.createElement(ScrollArea, { className: 'h-[calc(100vh-180px)]' },
-          React.createElement('div', { className: 'space-y-2' },
-            themes.length === 0
-              ? React.createElement('p', { className: 'text-sm text-gray-500 text-center py-8' },
-                  'No themes yet. Click "Add Theme" to get started.'
-                )
-              : themes.map(theme =>
-                  React.createElement(ThemeCard, {
-                    key: theme.id,
-                    theme,
-                    isActive: activeTheme?.id === theme.id,
-                    onSwitch: () => handleSwitchTheme(theme.id),
-                    onRemove: () => handleRemoveTheme(theme.id),
-                    onEdit: () => handleEditTheme(theme)
-                  })
-                )
-          )
-        ),
-
-    // 添加主题对话框
-    showAddDialog && React.createElement(Dialog, { open: true, onOpenChange: setShowAddDialog },
-      React.createElement(DialogContent, null,
-        React.createElement(DialogHeader, null,
-          React.createElement(DialogTitle, null, 'Add New Theme')
-        ),
-        React.createElement('div', { className: 'space-y-4 mt-4' },
-          // 主题名称
-          React.createElement('div', null,
-            React.createElement('label', { className: 'block text-sm font-medium mb-1' }, 'Theme Name'),
-            React.createElement(Input, {
-              value: newThemeName,
-              onChange: (e) => setNewThemeName(e.target.value),
-              placeholder: 'e.g., Gothic Void'
-            })
-          ),
-          // 图片选择
-          React.createElement('div', null,
-            React.createElement('label', { className: 'block text-sm font-medium mb-1' }, 'Background Image'),
-            React.createElement('input', {
-              type: 'file',
-              accept: 'image/*',
-              onChange: handleFileSelect,
-              className: 'block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100'
-            })
-          ),
-          // 预览
-          selectedFile && React.createElement('div', null,
-            React.createElement('label', { className: 'block text-sm font-medium mb-1' }, 'Preview'),
-            React.createElement('img', {
-              src: URL.createObjectURL(selectedFile),
-              alt: 'Preview',
-              className: 'w-full h-32 object-cover rounded-lg'
-            })
-          ),
-          // 按钮
-          React.createElement('div', { className: 'flex gap-2' },
-            React.createElement(Button, {
-              onClick: handleAddTheme,
-              disabled: !selectedFile || !newThemeName.trim()
-            }, 'Save'),
-            React.createElement(Button, {
-              variant: 'ghost',
-              onClick: () => setShowAddDialog(false)
-            }, 'Cancel')
-          )
+      // 主题列表
+      React.createElement(ScrollArea, { className: 'h-[calc(100vh-180px)]' },
+        React.createElement('div', { className: 'space-y-2' },
+          themes.length === 0
+            ? React.createElement('p', { className: 'text-sm text-gray-500 text-center py-8' },
+                'No themes yet. Click "Add Theme" to get started.'
+              )
+            : themes.map(theme =>
+                React.createElement(ThemeCard, {
+                  key: theme.id,
+                  theme,
+                  isActive: activeTheme?.id === theme.id,
+                  onSwitch: () => handleSwitchTheme(theme.id),
+                  onRemove: () => handleRemoveTheme(theme.id),
+                  onEdit: () => handleStartEdit(theme)
+                })
+              )
         )
       )
+    ),
+
+    // 添加主题视图
+    view === 'add' && React.createElement(React.Fragment, null,
+      // 顶部标题和按钮
+      React.createElement('div', { className: 'flex items-center justify-between' },
+        React.createElement('h2', { className: 'text-lg font-semibold' }, 'Add New Theme'),
+        React.createElement('button', {
+          onClick: () => setView('list'),
+          className: 'text-sm text-gray-500 hover:text-gray-700'
+        }, '← Back')
+      ),
+
+      // 主题名称
+      React.createElement('div', null,
+        React.createElement('label', { className: 'block text-sm font-medium mb-1' }, 'Theme Name'),
+        React.createElement(Input, {
+          value: newThemeName,
+          onChange: (e) => setNewThemeName(e.target.value),
+          placeholder: 'e.g., Gothic Void'
+        })
+      ),
+
+      // 背景图片
+      React.createElement('div', null,
+        React.createElement('label', { className: 'block text-sm font-medium mb-1' }, 'Background Image'),
+        React.createElement('input', {
+          type: 'file',
+          accept: 'image/*',
+          onChange: handleFileSelect,
+          className: 'block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100'
+        })
+      ),
+
+      // 预览
+      selectedFile && React.createElement('div', null,
+        React.createElement('label', { className: 'block text-sm font-medium mb-1' }, 'Preview'),
+        React.createElement('img', {
+          src: URL.createObjectURL(selectedFile),
+          alt: 'Preview',
+          className: 'w-full h-32 object-cover rounded-lg'
+        })
+      ),
+
+      // 样式编辑器
+      React.createElement(StyleEditor, {
+        onSave: handleSaveNewTheme,
+        onCancel: () => setView('list'),
+        isNew: true
+      })
+    ),
+
+    // 编辑主题视图
+    view === 'edit' && editingTheme && React.createElement(React.Fragment, null,
+      // 顶部标题和按钮
+      React.createElement('div', { className: 'flex items-center justify-between' },
+        React.createElement('h2', { className: 'text-lg font-semibold' }, 'Edit Theme'),
+        React.createElement('button', {
+          onClick: () => { setView('list'); setEditingTheme(null) },
+          className: 'text-sm text-gray-500 hover:text-gray-700'
+        }, '← Back')
+      ),
+
+      // 主题名称（只读）
+      React.createElement('div', null,
+        React.createElement('label', { className: 'block text-sm font-medium mb-1' }, 'Theme Name'),
+        React.createElement(Input, {
+          value: editingTheme.name,
+          disabled: true
+        })
+      ),
+
+      // 背景图片预览
+      editingTheme.image && React.createElement('div', null,
+        React.createElement('label', { className: 'block text-sm font-medium mb-1' }, 'Background Image'),
+        React.createElement('img', {
+          src: editingTheme.image,
+          alt: editingTheme.name,
+          className: 'w-full h-32 object-cover rounded-lg'
+        })
+      ),
+
+      // 样式编辑器
+      React.createElement(StyleEditor, {
+        theme: editingTheme,
+        onSave: handleSaveEdit,
+        onCancel: () => { setView('list'); setEditingTheme(null) },
+        isNew: false
+      })
     )
   )
 }
