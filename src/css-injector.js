@@ -11,18 +11,21 @@
 import { AREA_SELECTORS } from './style-config.js'
 
 const STYLE_ID = 'hermes-dream-skin-style'
+const GLOBAL_ID = 'hermes-dream-skin-global'
 const CHROME_ID = 'hermes-dream-skin-chrome'
 
 export class CSSInjector {
   constructor() {
     this.currentTheme = null
     this.styleEl = null
+    this.globalEl = null
     this.chromeEl = null
   }
 
   init() {
     // 初始化时检查是否有已注入的样式
     this.styleEl = document.getElementById(STYLE_ID)
+    this.globalEl = document.getElementById(GLOBAL_ID)
     this.chromeEl = document.getElementById(CHROME_ID)
   }
 
@@ -83,9 +86,8 @@ export class CSSInjector {
         --dream-skin-task-mode: ${taskMode};
       }
 
-      /* 主内容区背景 */
-      html.dream-skin-active main.main-surface,
-      html.dream-skin-active [role="main"] {
+      /* 主内容区背景（legacy 路径：无 styles 的旧主题） */
+      html.dream-skin-active [data-tree-group="grp-main"] {
         background-image: var(--dream-skin-art) !important;
         background-size: cover !important;
         background-position: ${Math.round(focusX * 100)}% ${Math.round(focusY * 100)}% !important;
@@ -94,26 +96,25 @@ export class CSSInjector {
       }
 
       /* 侧边栏半透明背景 */
-      html.dream-skin-active aside.app-shell-left-panel {
+      html.dream-skin-active [data-tree-group="grp-sessions"] {
         background: color-mix(in srgb, var(--ui-bg-sidebar) 85%, transparent) !important;
         backdrop-filter: blur(12px) saturate(1.05) !important;
       }
 
       /* 聊天区域半透明遮罩，确保文字可读性 */
-      html.dream-skin-active .thread-scroll-container,
-      html.dream-skin-active [data-testid="chat-container"] {
+      html.dream-skin-active [data-slot="aui_thread-viewport"] {
         background: color-mix(in srgb, var(--ui-bg-editor) 92%, transparent) !important;
       }
 
       /* 消息气泡增强可读性 */
-      html.dream-skin-active [data-message-author-role="user"] .message-content,
-      html.dream-skin-active [data-message-author-role="assistant"] .message-content {
+      html.dream-skin-active [data-role="user"],
+      html.dream-skin-active [data-slot="aui_assistant-message-root"] {
         background: color-mix(in srgb, var(--ui-bg-bubble) 95%, transparent) !important;
         backdrop-filter: blur(4px) !important;
       }
 
       /* Composer 区域半透明 */
-      html.dream-skin-active .composer-surface-chrome {
+      html.dream-skin-active [data-slot="composer-surface"] {
         background: color-mix(in srgb, var(--ui-bg-chrome) 90%, transparent) !important;
         backdrop-filter: blur(14px) saturate(1.06) !important;
       }
@@ -153,13 +154,44 @@ export class CSSInjector {
     }
     lines.push(`}`)
 
-    // 全局背景
-    if (styles.global?.background?.color) {
-      const bg = styles.global.background
-      const opacity = (bg.opacity ?? 80) / 100
-      lines.push(`html.dream-skin-active body {`)
-      lines.push(`  background-color: ${this.hexToRgba(bg.color, opacity)} !important;`)
+    // ── 主题背景（颜色 / 透明度 / 渐变 / 玻璃蒙板） ──
+    // 背景「底色」（纯色 / 渐变 / 背景图）由 injectChrome() 注入到固定的全屏背景层
+    // （与背景图同源，始终位于所有内容之后），面板在「玻璃蒙板」模式下对该层做半透明 + 模糊。
+    // 因此这里只负责「玻璃蒙板」下的面板半透明 + 模糊处理；纯色 / 渐变底色见 injectChrome。
+    // 玻璃与渐变相互独立：渐变控制底色层，玻璃控制面板处理，两者可同时开启。
+    const bg = styles.global?.background
+    if (bg && bg.color && bg.glass) {
+      const bgOpacity = (bg.opacity ?? 86) / 100
+      const bgColor = bg.color
+      const panelBg = `color-mix(in srgb, ${bgColor} ${Math.round(bgOpacity * 100)}%, transparent)`
+
+      // 玻璃蒙板：面板半透明 + 模糊，露出底层固定背景层（纯色 / 渐变 / 背景图）
+      lines.push(`/* glass mask */`)
+      lines.push(`html.dream-skin-active [data-tree-group="grp-sessions"] {`)
+      lines.push(`  background: ${panelBg} !important;`)
+      lines.push(`  border-color: var(--ds-line) !important;`)
+      lines.push(`  backdrop-filter: blur(12px) saturate(1.05) !important;`)
       lines.push(`}`)
+      lines.push(`html.dream-skin-active [data-tree-group="grp-sessions"] nav { background: transparent !important; }`)
+      lines.push(`html.dream-skin-active [data-tree-group="grp-sessions"] button:hover { background: color-mix(in srgb, var(--ds-accent) 18%, transparent) !important; }`)
+      lines.push(`html.dream-skin-active [data-tree-group="grp-sessions"] [aria-current="page"] { color: var(--ds-text) !important; background: color-mix(in srgb, var(--ds-accent) 24%, transparent) !important; box-shadow: inset 0 0 0 1px var(--ds-line) !important; }`)
+      lines.push(`html.dream-skin-active [data-tree-group="grp-main"] {`)
+      lines.push(`  background: ${panelBg} !important;`)
+      lines.push(`}`)
+      lines.push(`html.dream-skin-active [data-role="user"], html.dream-skin-active [data-slot="aui_assistant-message-root"] {`)
+      lines.push(`  background: ${panelBg} !important;`)
+      lines.push(`  backdrop-filter: blur(4px) !important;`)
+      lines.push(`}`)
+      lines.push(`html.dream-skin-active [data-slot="composer-surface"] {`)
+      lines.push(`  background: ${panelBg} !important;`)
+      lines.push(`  border: 1px solid var(--ds-line) !important;`)
+      lines.push(`  border-radius: 18px !important;`)
+      lines.push(`  box-shadow: 0 12px 34px color-mix(in srgb, var(--ds-accent) 8%, transparent) !important;`)
+      lines.push(`  backdrop-filter: blur(14px) saturate(1.06) !important;`)
+      lines.push(`}`)
+      lines.push(`html.dream-skin-active [data-slot="statusbar"] { background: ${panelBg} !important; }`)
+      lines.push(`html.dream-skin-active .dream-home>div:first-child>div:first-child>div:first-child { border: 1px solid var(--ds-line) !important; border-radius: 20px !important; box-shadow: 0 18px 48px color-mix(in srgb, var(--ds-accent) 9%, transparent) !important; }`)
+      lines.push(`html.dream-skin-active .dream-home>div:first-child>div:first-child>div:first-child::before { background: radial-gradient(ellipse at center, color-mix(in srgb, var(--ds-panel) 92%, transparent) 0 23%, transparent 72%); }`)
     }
 
     // 全局字体
@@ -190,18 +222,10 @@ export class CSSInjector {
       lines.push(`}`)
     }
 
-    // 背景图（主内容区）
-    lines.push(`/* 主内容区背景 */`)
-    lines.push(`html.dream-skin-active main.main-surface,`)
-    lines.push(`html.dream-skin-active [role="main"] {`)
-    if (image) {
-      lines.push(`  background-image: var(--dream-skin-art) !important;`)
-      lines.push(`  background-size: cover !important;`)
-      lines.push(`  background-position: ${Math.round(focusX * 100)}% ${Math.round(focusY * 100)}% !important;`)
-      lines.push(`  background-repeat: no-repeat !important;`)
-      lines.push(`  background-attachment: fixed !important;`)
-    }
-    lines.push(`}`)
+    // 背景图说明：实际背景图由 injectChrome() 以「固定背景层」注入（docs 的
+    // Fixed Background Div Technique）。主内容区的背景由上方「主题背景」生成
+    // （玻璃蒙板 / 渐变 / 纯色）决定；非上述情况时全局规则已将其中性化为透明。
+    // 因此这里不再对主内容区硬编码 background，避免覆盖主题的背景设置。
 
     // 各区域样式
     for (const [area, config] of Object.entries(styles.areas || {})) {
@@ -210,38 +234,45 @@ export class CSSInjector {
       const selector = AREA_SELECTORS[area]
       if (!selector) continue
 
-      lines.push(`/* ${area} */`)
-      lines.push(`html.dream-skin-active ${selector} {`)
-
-      // 字体
-      if (config.font?.color) {
-        lines.push(`  color: ${config.font.color} !important;`)
-      }
-      if (config.font?.size) {
-        lines.push(`  font-size: ${config.font.size}px !important;`)
-      }
-      if (config.font?.family) {
-        lines.push(`  font-family: '${config.font.family}' !important;`)
-      }
-
-      // 背景
+      // 区分两类声明：
+      //  - fontDecls（字体类：color / size / family）：应「下放到子元素」，因为可见文字多在
+      //    后代节点（按钮、[aria-current="page"]、nav 等），且全局规则对子元素有更高特异性的
+      //    !important 着色，仅改根元素颜色会被覆盖、看不到效果。
+      //  - boxDecls（容器类：background / border / radius）：只作用于区域容器本身，不要糊到每个子节点。
+      const fontDecls = []
+      const boxDecls = []
+      if (config.font?.color) fontDecls.push(`color: ${config.font.color} !important;`)
+      if (config.font?.size) fontDecls.push(`font-size: ${config.font.size}px !important;`)
+      if (config.font?.family) fontDecls.push(`font-family: '${config.font.family}' !important;`)
       if (config.background?.color) {
         const bg = config.background
         const opacity = (bg.opacity ?? 80) / 100
-        lines.push(`  background-color: ${this.hexToRgba(bg.color, opacity)} !important;`)
+        boxDecls.push(`background-color: ${this.hexToRgba(bg.color, opacity)} !important;`)
       }
-
-      // 边框
       if (config.border?.color || config.border?.width !== undefined) {
         const borderColor = config.border.color || '#000000'
         const borderWidth = config.border.width ?? 0
-        lines.push(`  border: ${borderWidth}px solid ${borderColor} !important;`)
+        boxDecls.push(`border: ${borderWidth}px solid ${borderColor} !important;`)
       }
       if (config.border?.radius !== undefined) {
-        lines.push(`  border-radius: ${config.border.radius}px !important;`)
+        boxDecls.push(`border-radius: ${config.border.radius}px !important;`)
       }
 
+      lines.push(`/* ${area} */`)
+      // 根元素：字体 + 容器样式
+      lines.push(`html.dream-skin-active ${selector} {`)
+      if (fontDecls.length) lines.push(`  ${fontDecls.join(' ')}`)
+      if (boxDecls.length) lines.push(`  ${boxDecls.join(' ')}`)
       lines.push(`}`)
+
+      // 字体类下放到所有后代元素。用 html.dream-skin-active.dream-skin-active 重复类把特异性
+      // 从 (0,2,1) 抬到 (0,3,1)，正好压过全局对子元素（如 [aria-current="page"]）的 !important 着色；
+      // 主题样式表在全局之后注入，同特异性时后者胜出。
+      if (fontDecls.length) {
+        lines.push(`html.dream-skin-active.dream-skin-active ${selector} * {`)
+        lines.push(`  ${fontDecls.join(' ')}`)
+        lines.push(`}`)
+      }
     }
 
     // 自定义 CSS（最高优先级）
@@ -274,6 +305,23 @@ export class CSSInjector {
   }
 
   /**
+   * 将 hex 颜色按比例加深（factor=0.4 表示变暗 40%）
+   * 用于「渐变背景」生成深一档的终止色。
+   */
+  darkenHex(hex, factor = 0.3) {
+    const clean = (hex || '').replace('#', '').slice(0, 6)
+    const r = parseInt(clean.substring(0, 2) || '0', 16)
+    const g = parseInt(clean.substring(2, 4) || '0', 16)
+    const b = parseInt(clean.substring(4, 6) || '0', 16)
+    const f = 1 - factor
+    const nr = Math.round(r * f)
+    const ng = Math.round(g * f)
+    const nb = Math.round(b * f)
+    const toHex = (n) => n.toString(16).padStart(2, '0')
+    return `#${toHex(nr)}${toHex(ng)}${toHex(nb)}`
+  }
+
+  /**
    * 注入样式标签
    */
   injectStyle(css) {
@@ -294,12 +342,86 @@ export class CSSInjector {
   }
 
   /**
-   * 注入 Chrome 层（用于背景图覆盖和特效）
+   * 注入「全局规则」（与主题解耦的共享元素级覆盖）
+   *
+   * 写入独立的 <style id="hermes-dream-skin-global">，独立于主题切换：
+   * 插件启动时调用一次即可长期生效；用户在面板中修改后再次调用本方法即时重注入。
+   * 这些规则均以 html.dream-skin-active 为前缀，主题未应用时不会生效。
+   */
+  applyGlobalCSS(css) {
+    if (!css) return
+    if (this.globalEl) {
+      this.globalEl.textContent = css
+      return
+    }
+    this.globalEl = document.createElement('style')
+    this.globalEl.id = GLOBAL_ID
+    this.globalEl.textContent = css
+    document.head.appendChild(this.globalEl)
+  }
+
+  /** 移除全局规则样式标签 */
+  removeGlobal() {
+    if (this.globalEl) {
+      this.globalEl.remove()
+      this.globalEl = null
+    }
+  }
+
+  /**
+   * 注入固定背景层（全屏底色 / 背景图 / 渐变）
+   *
+   * 采用 docs/hermes-desktop-plugin-dev 的「Fixed Background Div Technique」：
+   * 作为 body.firstChild 插入，不设 z-index / 不设 opacity:0 —— 否则背景会
+   * 被放到页面之后或完全不可见（见文档 pitfalls：z-index:-1 / opacity:0 均为坑）。
+   *
+   * 底色优先级：背景图 > 渐变 > 纯色；无背景色且无图则不创建层（完全透明）。
+   * 这一层是主题「玻璃蒙板」要模糊 / 透出的对象，也承载渐变与纯色背景本身，
+   * 因此无论主题是否带图都会创建，确保渐变 / 纯色 / 玻璃效果真正可见
+   * （不再依赖被宿主根容器遮盖的 body 背景）。
    */
   injectChrome(theme) {
     if (this.chromeEl) {
       this.chromeEl.remove()
+      this.chromeEl = null
     }
+
+    const bg = theme?.styles?.global?.background
+
+    // 背景图优先：保留原有 cover + focus 定位行为
+    if (theme && theme.image) {
+      const art = theme.art || {}
+      const fx = Math.round((art.focusX ?? 0.5) * 100)
+      const fy = Math.round((art.focusY ?? 0.35) * 100)
+      this.chromeEl = document.createElement('div')
+      this.chromeEl.id = CHROME_ID
+      this.chromeEl.setAttribute('aria-hidden', 'true')
+      this.chromeEl.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        pointer-events: none;
+        background-image: url("${theme.image}");
+        background-size: cover;
+        background-position: ${fx}% ${fy}%;
+        background-repeat: no-repeat;
+      `
+      document.body.insertBefore(this.chromeEl, document.body.firstChild)
+      return
+    }
+
+    // 渐变 / 纯色底色
+    let paint = null
+    if (bg && bg.color) {
+      if (bg.gradient) {
+        paint = `linear-gradient(135deg, ${bg.color} 0%, ${this.darkenHex(bg.color, 0.4)} 100%)`
+      } else {
+        paint = this.hexToRgba(bg.color, (bg.opacity ?? 86) / 100)
+      }
+    }
+    if (!paint) return
 
     this.chromeEl = document.createElement('div')
     this.chromeEl.id = CHROME_ID
@@ -308,14 +430,14 @@ export class CSSInjector {
       position: fixed;
       top: 0;
       left: 0;
-      width: 100%;
-      height: 100%;
+      width: 100vw;
+      height: 100vh;
       pointer-events: none;
-      z-index: -1;
-      opacity: 0;
+      background: ${paint};
     `
 
-    document.body.appendChild(this.chromeEl)
+    // 插入到 body 第一个子节点之前 → 自然位于所有内容之后（无需 z-index）
+    document.body.insertBefore(this.chromeEl, document.body.firstChild)
   }
 
   /**
@@ -341,5 +463,6 @@ export class CSSInjector {
    */
   dispose() {
     this.removeTheme()
+    this.removeGlobal()
   }
 }

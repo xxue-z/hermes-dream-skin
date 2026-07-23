@@ -10,11 +10,11 @@
 import { DEFAULT_STYLES, STYLE_METADATA } from './style-config.js'
 
 const TABS = [
-  { id: 'global', label: '全局' },
-  { id: 'topBar', label: '顶部栏' },
-  { id: 'leftSidebar', label: '左侧栏' },
-  { id: 'chatArea', label: '聊天区' },
-  { id: 'bottomBar', label: '底部栏' }
+  { id: 'global', label: 'Global' },
+  { id: 'topBar', label: 'Top Bar' },
+  { id: 'leftSidebar', label: 'Left Sidebar' },
+  { id: 'chatArea', label: 'Chat Area' },
+  { id: 'bottomBar', label: 'Bottom Bar' }
 ]
 
 /**
@@ -33,15 +33,19 @@ function generatePreviewCSS(draftStyles) {
   lines.push('}')
 
   lines.push('')
-  lines.push('/* Global Background */')
+  lines.push('/* Global Background (fixed full-screen layer) */')
   if (global?.background?.color) {
-    const color = global.background.color
-    // 颜色已内嵌 alpha（#RRGGBBAA）时直接使用；否则叠加 background.opacity
-    if (color.length >= 9) {
-      lines.push(`body { background-color: ${color}; }`)
+    const bg = global.background
+    const pct = Math.round(bg.opacity ?? 86)
+    if (bg.glass) {
+      lines.push(`/* Glass Mask: panels = ${bg.color} @ ${pct}% + blur */`)
+    }
+    if (bg.gradient) {
+      lines.push(`/* Gradient: ${bg.color} → darker */`)
+      lines.push(`background-layer: linear-gradient(135deg, ${bg.color}, <darker>);`)
     } else {
-      const opacity = ((global.background.opacity ?? 80) / 100).toFixed(2)
-      lines.push(`body { background-color: ${color}${Math.round(opacity * 255).toString(16).padStart(2, '0')}; }`)
+      const alpha = Math.round(((bg.opacity ?? 86) / 100) * 255).toString(16).padStart(2, '0')
+      lines.push(`background-layer: ${bg.color}${alpha};`)
     }
   }
 
@@ -87,7 +91,7 @@ export function StyleEditor({ theme, onSave, onCancel, draftRef, isNew = false }
     JSON.parse(JSON.stringify(theme?.styles || DEFAULT_STYLES))
   )
 
-  // 将最新草稿暴露给外层（供面板顶部"保持"按钮读取并保存）
+  // 将最新草稿暴露给外层（供面板顶部"Keep"按钮读取并保存）
   React.useEffect(() => {
     if (draftRef) draftRef.current = draftStyles
   }, [draftStyles, draftRef])
@@ -174,13 +178,13 @@ function TabContent({ tabId, draftStyles, onChange, onToggleEnabled }) {
         className: 'w-4 h-4'
       }),
       React.createElement('label', { htmlFor: 'enable-custom', className: 'text-sm font-medium cursor-pointer' },
-        '启用该区域自定义样式'
+        'Enable custom styles for this area'
       )
     ),
 
     // 字体属性组
     React.createElement(PropertyGroup, {
-      title: '字体',
+      title: 'Font',
       category: 'font',
       config: config.font || {},
       metadata: STYLE_METADATA.font,
@@ -190,7 +194,7 @@ function TabContent({ tabId, draftStyles, onChange, onToggleEnabled }) {
 
     // 背景属性组
     React.createElement(PropertyGroup, {
-      title: '背景',
+      title: 'Background',
       category: 'background',
       config: config.background || {},
       metadata: STYLE_METADATA.background,
@@ -200,7 +204,7 @@ function TabContent({ tabId, draftStyles, onChange, onToggleEnabled }) {
 
     // 边框属性组
     React.createElement(PropertyGroup, {
-      title: '边框',
+      title: 'Border',
       category: 'border',
       config: config.border || {},
       metadata: STYLE_METADATA.border,
@@ -221,6 +225,23 @@ function PropertyGroup({ title, category, config, metadata, onChange, disabled }
     React.createElement('div', { className: 'space-y-3' },
       Object.entries(metadata).map(([key, meta]) => {
         const value = config[key] !== undefined ? config[key] : meta.default
+
+        // 复选框（如「启用渐变」「启用玻璃蒙板」）单独成行，标签在右侧
+        if (meta.type === 'checkbox') {
+          return React.createElement('label', {
+            key,
+            className: 'flex items-center gap-2 cursor-pointer select-none'
+          },
+            React.createElement('input', {
+              type: 'checkbox',
+              checked: !!value,
+              onChange: (e) => onChange(category, key, e.target.checked),
+              className: 'w-4 h-4'
+            }),
+            React.createElement('span', { className: 'text-xs text-gray-600' }, meta.label)
+          )
+        }
+
         return React.createElement('div', { key, className: 'flex items-center gap-3' },
           React.createElement('label', { className: 'w-24 text-xs text-gray-500 flex-shrink-0' }, meta.label),
           meta.type === 'color' && React.createElement(ColorPicker, {
@@ -258,7 +279,7 @@ function PropertyGroup({ title, category, config, metadata, onChange, disabled }
  */
 function CSSPreview({ css }) {
   return React.createElement('div', { className: 'space-y-2' },
-    React.createElement('h4', { className: 'font-medium text-sm text-gray-700' }, 'CSS 预览'),
+    React.createElement('h4', { className: 'font-medium text-sm text-gray-700' }, 'CSS Preview'),
     React.createElement('textarea', {
       readOnly: true,
       value: css,
@@ -381,7 +402,7 @@ function ColorPicker({ value, meta, onChange }) {
       onClick: handlePreviewClick,
       role: 'button',
       tabIndex: 0,
-      'aria-label': '选择颜色'
+      'aria-label': 'Select color'
     },
       React.createElement('div', { className: 'absolute inset-0', style: cpCheckerboard() }),
       React.createElement('div', {
@@ -408,7 +429,7 @@ function ColorPicker({ value, meta, onChange }) {
           value: parsed.hex,
           onChange: (e) => emit(e.target.value, hasOpacity ? parsed.alpha : 1),
           className: 'w-10 h-10 cursor-pointer bg-transparent border-0 p-0',
-          'aria-label': '颜色'
+          'aria-label': 'Color'
         }),
         React.createElement('input', {
           type: 'text',
@@ -422,7 +443,7 @@ function ColorPicker({ value, meta, onChange }) {
       // 透明度滑块（仅 hasOpacity 时显示，与颜色选择同时存在）
       hasOpacity && React.createElement('div', { className: 'space-y-1' },
         React.createElement('div', { className: 'flex items-center justify-between text-xs text-gray-500' },
-          React.createElement('span', null, '透明度'),
+          React.createElement('span', null, 'Opacity'),
           React.createElement('span', { className: 'font-mono' }, `${alphaPct}%`)
         ),
         React.createElement('div', { className: 'flex items-center gap-2' },
@@ -451,7 +472,7 @@ function ColorPicker({ value, meta, onChange }) {
         React.createElement('button', {
           className: 'px-3 py-1.5 rounded border border-(--ui-accent) bg-(--ui-accent) text-white hover:opacity-90 text-xs',
           onClick: () => setIsOpen(false)
-        }, '确定')
+        }, 'OK')
       )
     )
   )

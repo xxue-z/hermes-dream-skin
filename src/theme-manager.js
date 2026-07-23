@@ -7,16 +7,19 @@
  * - 主题切换事件通知
  */
 
-import { DEFAULT_STYLES } from './style-config.js'
+import { DEFAULT_STYLES, DEFAULT_GLOBAL_CSS } from './style-config.js'
+import { PRESET_THEMES } from './presets.js'
 
 const STORAGE_KEY = 'dream-skin:themes'
 const ACTIVE_THEME_KEY = 'dream-skin:active-theme'
+const GLOBAL_RULES_KEY = 'dream-skin:global-rules'
 
 export class ThemeManager {
   constructor(ctx) {
     this.ctx = ctx
     this.themes = new Map()
     this.activeThemeId = null
+    this.globalRules = null
     this.listeners = new Set()
   }
 
@@ -33,6 +36,47 @@ export class ThemeManager {
             theme.styles = JSON.parse(JSON.stringify(DEFAULT_STYLES))
           }
         }
+
+        // 升级 / 播种预设：preset-* id 始终跟踪「打包种子」里的细化配色（调色板）。
+        // 插件运行时只从 PluginStorage 取主题、不读 themes/*.json，
+        // 故直接改 themes/*.json 无效；种子已打进 bundle，此处落地到 storage。
+        // ⚠️ 关键修正：只同步「调色板」(customCSS) 来自种子，用户在预设上的 per-area /
+        // global 自定义（例如 leftSidebar 单独改字体颜色）必须保留——否则一旦插件重载，
+        // loadFromStorage 会把整个 styles 用种子覆盖，用户改动瞬间消失。
+        //    个人主题（theme-* id）不受影响。
+        for (const seed of PRESET_THEMES) {
+          const existing = this.themes.get(seed.id)
+          if (existing) {
+            // 保留用户/宿主侧元数据（名称、图片、art、description）
+            const seedAreas = seed.styles?.areas || {}
+            const userAreas = existing.styles?.areas || {}
+            const mergedAreas = {}
+            for (const key of new Set([...Object.keys(seedAreas), ...Object.keys(userAreas)])) {
+              mergedAreas[key] = { ...(seedAreas[key] || {}), ...(userAreas[key] || {}) }
+            }
+            existing.styles = {
+              ...existing.styles,
+              // 调色板跟随种子（保持最新细化配色）
+              customCSS: seed.styles?.customCSS || existing.styles?.customCSS,
+              // 全局 / 区域：种子默认值打底，用户自定义覆盖其上
+              global: {
+                ...(seed.styles?.global || {}),
+                ...(existing.styles?.global || {})
+              },
+              areas: mergedAreas
+            }
+          } else {
+            this.themes.set(seed.id, {
+              id: seed.id,
+              name: seed.name,
+              appearance: seed.appearance || 'auto',
+              art: seed.art,
+              image: seed.image || null,
+              styles: JSON.parse(JSON.stringify(seed.styles)),
+              createdAt: Date.now()
+            })
+          }
+        }
       }
     } catch (e) {
       console.warn('[Dream Skin] Failed to load themes from storage:', e)
@@ -43,6 +87,62 @@ export class ThemeManager {
     } catch (e) {
       console.warn('[Dream Skin] Failed to load active theme:', e)
     }
+
+    // 全局规则：独立于主题，插件启动时即生效。storage 无则回退默认。
+    try {
+      const storedGlobal = this.ctx.storage.get(GLOBAL_RULES_KEY, null)
+      this.globalRules = storedGlobal || DEFAULT_GLOBAL_CSS
+    } catch (e) {
+      console.warn('[Dream Skin] Failed to load global rules:', e)
+      this.globalRules = DEFAULT_GLOBAL_CSS
+    }
+  }
+
+  /** 获取当前全局规则 CSS */
+  getGlobalRules() {
+    return this.globalRules || DEFAULT_GLOBAL_CSS
+  }
+
+  /** 设置并持久化全局规则 CSS */
+  setGlobalRules(css) {
+    this.globalRules = css || DEFAULT_GLOBAL_CSS
+    try {
+      this.ctx.storage.set(GLOBAL_RULES_KEY, this.globalRules)
+    } catch (e) {
+      console.warn('[Dream Skin] Failed to save global rules:', e)
+    }
+  }
+
+  /** 重新从 PluginStorage 加载主题（清空内存状态后重载） */
+  reloadFromStorage() {
+    this.themes = new Map()
+    this.activeThemeId = null
+    this.loadFromStorage()
+  }
+
+  /** 恢复系统默认状态：清空所有主题，仅保留种子预设并设为激活 */
+  restoreSystemDefaults() {
+    this.themes = new Map()
+    for (const seed of PRESET_THEMES) {
+      this.themes.set(seed.id, {
+        id: seed.id,
+        name: seed.name,
+        appearance: seed.appearance || 'auto',
+        art: seed.art,
+        image: seed.image || null,
+        styles: JSON.parse(JSON.stringify(seed.styles)),
+        createdAt: Date.now()
+      })
+    }
+    this.activeThemeId = this.themes.size ? PRESET_THEMES[0].id : null
+    // 全局规则一并重置为默认
+    this.globalRules = DEFAULT_GLOBAL_CSS
+    try {
+      this.ctx.storage.set(GLOBAL_RULES_KEY, DEFAULT_GLOBAL_CSS)
+    } catch (e) {
+      console.warn('[Dream Skin] Failed to save global rules:', e)
+    }
+    this.saveToStorage()
   }
 
   /** 保存主题配置到 PluginStorage */

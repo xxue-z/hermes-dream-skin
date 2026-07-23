@@ -40,6 +40,7 @@ function buildPlugin() {
   // 定义模块依赖顺序（被依赖的先定义）
   const files = [
     { path: 'style-config.js', name: 'style-config' },
+    { path: 'presets.js', name: 'presets' },
     { path: 'style-editor.js', name: 'style-editor' },
     { path: 'theme-manager.js', name: 'theme-manager' },
     { path: 'css-injector.js', name: 'css-injector' },

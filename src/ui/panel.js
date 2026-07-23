@@ -9,6 +9,7 @@
  */
 
 import { StyleEditor } from '../style-editor.js'
+import { DEFAULT_GLOBAL_CSS } from '../style-config.js'
 
 const { Button, Input, ScrollArea } = window.__HERMES_PLUGIN_SDK__
 
@@ -28,8 +29,12 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
   const [newStyles, setNewStyles] = React.useState(null)
   // 编辑视图中待保存的新背景图
   const [editFile, setEditFile] = React.useState(null)
-  // 保存 StyleEditor 当前草稿，供顶部"保持"按钮读取
+  // 保存 StyleEditor 当前草稿，供顶部"Keep"按钮读取
   const draftRef = React.useRef(null)
+
+  // 全局规则弹框状态
+  const [showGlobalDialog, setShowGlobalDialog] = React.useState(false)
+  const [globalDraft, setGlobalDraft] = React.useState('')
 
   // 刷新主题列表
   const refreshThemes = React.useCallback(() => {
@@ -130,6 +135,36 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
     refreshThemes()
   }
 
+  // 重新加载：从 PluginStorage 重新读取主题并重新应用当前激活主题
+  const handleReload = () => {
+    try {
+      themeManager.reloadFromStorage()
+      const active = themeManager.getActiveTheme()
+      if (active) cssInjector.applyTheme(active)
+      refreshThemes()
+    } catch (e) {
+      console.error('[Dream Skin] Failed to reload:', e)
+    }
+  }
+
+  // 恢复系统默认状态：清空自定义主题，仅保留系统预设
+  const handleRestoreDefaults = () => {
+    if (!confirm('Restore system default themes? This will remove all custom themes.')) {
+      return
+    }
+    try {
+      themeManager.restoreSystemDefaults()
+      const active = themeManager.getActiveTheme()
+      if (active) cssInjector.applyTheme(active)
+      // 全局规则一并重置为默认并即时重注入
+      cssInjector.applyGlobalCSS(themeManager.getGlobalRules())
+      setView('list')
+      refreshThemes()
+    } catch (e) {
+      console.error('[Dream Skin] Failed to restore defaults:', e)
+    }
+  }
+
   // 删除主题
   const handleRemoveTheme = (themeId) => {
     if (!confirm('Are you sure you want to delete this theme?')) {
@@ -140,17 +175,132 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
     refreshThemes()
   }
 
+  // 打开「全局规则」弹框：载入当前全局规则到草稿
+  const handleOpenGlobal = () => {
+    setGlobalDraft(themeManager.getGlobalRules())
+    setShowGlobalDialog(true)
+  }
+
+  // 保存全局规则：持久化并即时重注入
+  const handleSaveGlobal = () => {
+    try {
+      themeManager.setGlobalRules(globalDraft)
+      cssInjector.applyGlobalCSS(globalDraft)
+      setShowGlobalDialog(false)
+    } catch (e) {
+      console.error('[Dream Skin] Failed to save global rules:', e)
+    }
+  }
+
+  // 全局规则重置为默认
+  const handleResetGlobal = () => {
+    setGlobalDraft(DEFAULT_GLOBAL_CSS)
+  }
+
   return React.createElement('div', { className: 'p-4 space-y-4' },
-    // 标题（列表视图显示）
-    view === 'list' && React.createElement('h2', { className: 'text-lg font-semibold' }, 'Dream Skin'),
+    // 标题 + 操作按钮（同一行：标题在左，按钮在右）
+    view === 'list' && React.createElement('div', { className: 'flex items-center justify-between mb-3' },
+      React.createElement('h2', { className: 'text-lg font-semibold' }, 'Dream Skin'),
+      React.createElement('div', { className: 'flex items-center gap-2' },
+        React.createElement(Button, {
+          onClick: handleStartAdd,
+          className: 'text-sm'
+        }, 'Add Theme'),
+        React.createElement(Button, {
+          onClick: handleReload,
+          className: 'text-sm',
+          title: 'Reload themes from storage and re-apply the active theme'
+        }, 'Reload'),
+        React.createElement(Button, {
+          onClick: handleRestoreDefaults,
+          className: 'text-sm',
+          title: 'Remove all custom themes and restore system default presets'
+        }, 'Restore Defaults'),
+        React.createElement(Button, {
+          onClick: handleOpenGlobal,
+          className: 'text-sm',
+          title: 'View and edit global rules applied on plugin startup (shared across all themes)'
+        }, 'Global Rules')
+      )
+    ),
+
+    // 全局规则弹框（模态）：查看 / 修改
+    showGlobalDialog && React.createElement('div', {
+      style: {
+        position: 'fixed', inset: 0, zIndex: 9999,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'rgba(0,0,0,.55)', padding: 16
+      },
+      onClick: (e) => { if (e.target === e.currentTarget) setShowGlobalDialog(false) }
+    },
+      React.createElement('div', {
+        style: {
+          width: 'min(720px, 94vw)', maxHeight: '86vh',
+          display: 'flex', flexDirection: 'column',
+          background: 'var(--ds-panel, #191c22)', color: 'var(--ds-text, #edf0f1)',
+          border: '1px solid var(--ds-line, rgba(130,152,163,.24))',
+          borderRadius: 14, boxShadow: '0 24px 64px rgba(0,0,0,.5)', overflow: 'hidden'
+        }
+      },
+        // 标题栏
+        React.createElement('div', {
+          style: {
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '14px 18px', borderBottom: '1px solid var(--ds-line, rgba(130,152,163,.24))'
+          }
+        },
+          React.createElement('h3', { style: { fontSize: 16, fontWeight: 600 } }, 'Global Rules'),
+          React.createElement('button', {
+            onClick: () => setShowGlobalDialog(false),
+            title: 'Close',
+            style: {
+              width: 30, height: 30, borderRadius: 8, border: '1px solid transparent',
+              background: 'transparent', color: 'var(--ds-muted, #a3aaae)',
+              cursor: 'pointer', fontSize: 18, lineHeight: 1
+            }
+          }, '×')
+        ),
+        // 说明 + 编辑区
+        React.createElement('div', { style: { padding: '16px 18px', flex: 1, overflow: 'auto' } },
+          React.createElement('p', {
+            style: { fontSize: 12, color: 'var(--ds-muted, #a3aaae)', marginBottom: 10, lineHeight: 1.5 }
+          }, 'These rules are applied on plugin startup and require a theme to be active. They are shared across all themes and are not stored per-theme.'),
+          React.createElement('textarea', {
+            value: globalDraft,
+            onChange: (e) => setGlobalDraft(e.target.value),
+            spellCheck: false,
+            style: {
+              width: '100%', height: '46vh', resize: 'none',
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+              fontSize: 12, lineHeight: 1.55, color: '#9ae6b4', background: '#0c0f14',
+              border: '1px solid var(--ds-line, rgba(130,152,163,.24))',
+              borderRadius: 8, padding: 12
+            }
+          })
+        ),
+        // 底部按钮
+        React.createElement('div', {
+          style: {
+            display: 'flex', gap: 8, justifyContent: 'flex-end',
+            padding: '12px 18px', borderTop: '1px solid var(--ds-line, rgba(130,152,163,.24))'
+          }
+        },
+          React.createElement(Button, {
+            onClick: handleResetGlobal, className: 'text-sm',
+            title: 'Reset global rules to default'
+          }, 'Reset'),
+          React.createElement(Button, {
+            onClick: () => setShowGlobalDialog(false), className: 'text-sm'
+          }, 'Cancel'),
+          React.createElement(Button, {
+            onClick: handleSaveGlobal, className: 'text-sm'
+          }, 'Save')
+        )
+      )
+    ),
 
     // 列表视图
     view === 'list' && React.createElement(React.Fragment, null,
-      // 添加主题按钮
-      React.createElement(Button, {
-        onClick: handleStartAdd,
-        className: 'w-full'
-      }, 'Add Theme'),
 
       // 主题列表
       React.createElement(ScrollArea, { className: 'h-[calc(100vh-180px)]' },
@@ -164,7 +314,7 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
                   key: theme.id,
                   theme,
                   isActive: activeTheme?.id === theme.id,
-                  onSwitch: () => handleSwitchTheme(theme.id),
+                  onActivate: () => handleSwitchTheme(theme.id),
                   onRemove: () => handleRemoveTheme(theme.id),
                   onEdit: () => handleStartEdit(theme)
                 })
@@ -182,11 +332,11 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
           React.createElement('button', {
             onClick: () => handleSaveNewTheme(draftRef.current),
             className: 'px-3 py-1.5 rounded border border-(--ui-accent) bg-(--ui-accent) text-white hover:opacity-90 text-sm'
-          }, '保持'),
+          }, 'Keep'),
           React.createElement('button', {
             onClick: () => { setNewThemeName(''); setSelectedFile(null); setView('list') },
             className: 'px-3 py-1.5 rounded border border-(--ui-stroke-secondary) text-(--ui-text-secondary) hover:bg-(--chrome-action-hover) text-sm'
-          }, '取消')
+          }, 'Cancel')
         )
       ),
 
@@ -224,11 +374,11 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
           React.createElement('button', {
             onClick: () => handleSaveEdit(draftRef.current),
             className: 'px-3 py-1.5 rounded border border-(--ui-accent) bg-(--ui-accent) text-white hover:opacity-90 text-sm'
-          }, '保持'),
+          }, 'Keep'),
           React.createElement('button', {
             onClick: () => { setView('list'); setEditingTheme(null); setEditFile(null) },
             className: 'px-3 py-1.5 rounded border border-(--ui-stroke-secondary) text-(--ui-text-secondary) hover:bg-(--chrome-action-hover) text-sm'
-          }, '取消')
+          }, 'Cancel')
         )
       ),
 
@@ -304,13 +454,13 @@ function BackgroundImageField({ label, initialPreview, onFile }) {
       preview
         ? React.createElement('img', {
             src: preview,
-            alt: '背景预览',
+            alt: 'Background preview',
             className: 'w-full h-32 object-cover rounded-lg pointer-events-none'
           })
         : React.createElement(React.Fragment, null,
             React.createElement('div', { className: 'text-3xl text-gray-400' }, '⬆'),
-            React.createElement('div', { className: 'text-sm text-gray-600' }, '拖放图片到此处，或点击选择'),
-            React.createElement('div', { className: 'text-xs text-gray-400' }, '推荐 2560×1440 或更高')
+            React.createElement('div', { className: 'text-sm text-gray-600' }, 'Drag an image here, or click to select'),
+            React.createElement('div', { className: 'text-xs text-gray-400' }, 'Recommended 2560×1440 or higher')
           ),
       React.createElement('input', {
         id: inputId,
@@ -325,38 +475,51 @@ function BackgroundImageField({ label, initialPreview, onFile }) {
 
 /**
  * 主题卡片组件
- * 选中态以边框颜色区分，不显示"Active"文本
+ * 选中态以边框颜色区分；列表上的按钮统一蓝色背景；「Activate」按钮点击后才正式应用主题。
  */
-function ThemeCard({ theme, isActive, onSwitch, onRemove, onEdit }) {
-  // 激活主题禁止修改/删除：编辑与删除按钮禁用
-  const actionBase = 'px-1.5 py-0.5 rounded border transition-colors'
-  const actionEnabled = 'text-(--ui-text-tertiary) border-(--ui-stroke-secondary)'
-  const actionDisabled = 'opacity-50 cursor-not-allowed text-(--ui-text-tertiary) border-(--ui-stroke-secondary)'
+function ThemeCard({ theme, isActive, onActivate, onRemove, onEdit }) {
+  // 列表按钮统一蓝色背景（宿主主题变量 --ui-accent）
+  const blueBtn = 'px-2 py-0.5 rounded text-xs transition-colors'
+  const blueStyle = {
+    background: 'var(--ui-accent)',
+    border: '1px solid var(--ui-accent)',
+    color: '#fff'
+  }
+  const blueStyleDisabled = { ...blueStyle, opacity: 0.5, cursor: 'not-allowed' }
 
   return React.createElement('div', {
-    className: `relative p-3 rounded-lg border-2 cursor-pointer transition-all ${
+    className: `relative p-3 rounded-lg border-2 transition-all ${
       isActive ? 'border-(--ui-accent)' : 'border-(--ui-stroke-secondary) hover:border-(--ui-text-tertiary)'
     }`,
-    onClick: onSwitch,
-    title: isActive ? '当前激活主题（不可编辑/删除）' : '点击应用此主题'
+    title: isActive ? 'Active theme' : 'Use "Activate" to apply this theme'
   },
-    // 顶部：主题名 + 文字操作按钮
+    // 顶部：主题名 + 操作按钮（蓝色背景）
     React.createElement('div', { className: 'flex items-center justify-between mb-2' },
       React.createElement('h3', { className: 'font-medium text-sm' }, theme.name),
       React.createElement('div', { className: 'flex gap-1' },
+        // 激活按钮（图标，点击才正式应用主题）
+        React.createElement('button', {
+          disabled: isActive,
+          onClick: (e) => { e.stopPropagation(); if (!isActive) onActivate() },
+          style: isActive ? blueStyleDisabled : blueStyle,
+          className: blueBtn,
+          title: isActive ? 'This theme is active' : 'Activate this theme'
+        }, isActive ? '✓' : '✓'),
         // 编辑按钮
         React.createElement('button', {
           disabled: isActive,
           onClick: (e) => { e.stopPropagation(); if (!isActive) onEdit() },
-          className: `${actionBase} ${isActive ? actionDisabled : actionEnabled + ' hover:text-(--ui-accent) hover:border-(--ui-accent)'}`,
-          title: isActive ? '激活主题不可编辑' : 'Edit Styles'
+          style: isActive ? blueStyleDisabled : blueStyle,
+          className: blueBtn,
+          title: isActive ? 'Active theme cannot be edited' : 'Edit Styles'
         }, '✎'),
         // 删除按钮
         React.createElement('button', {
           disabled: isActive,
           onClick: (e) => { e.stopPropagation(); if (!isActive) onRemove() },
-          className: `${actionBase} ${isActive ? actionDisabled : actionEnabled + ' hover:text-(--ui-text-primary) hover:border-(--ui-text-primary)'}`,
-          title: isActive ? '激活主题不可删除' : 'Delete Theme'
+          style: isActive ? blueStyleDisabled : blueStyle,
+          className: blueBtn,
+          title: isActive ? 'Active theme cannot be deleted' : 'Delete Theme'
         }, '×')
       )
     ),
