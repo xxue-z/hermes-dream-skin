@@ -16,7 +16,7 @@ export const AREA_SELECTORS = {
 export const DEFAULT_STYLES = {
   global: {
     font: { family: 'system-ui', size: 14, color: '#ffffff' },
-    background: { color: '#000000', opacity: 80 },
+    background: { color: '#000000' },
     border: { color: '#333333', width: 1, radius: 8 }
   },
   areas: {
@@ -36,8 +36,7 @@ export const STYLE_METADATA = {
     color: { label: 'Font Color', type: 'color', default: '#ffffff', hasOpacity: true }
   },
   background: {
-    color: { label: 'Background Color', type: 'color', default: '#000000', hasOpacity: true },
-    opacity: { label: 'Opacity', type: 'range', min: 0, max: 100, unit: '%', default: 80 }
+    color: { label: 'Background Color', type: 'color', default: '#000000', hasOpacity: true }
   },
   border: {
     color: { label: 'Border Color', type: 'color', default: '#333333', hasOpacity: true },

@@ -155,6 +155,23 @@ export class ThemeManager {
     }
   }
 
+  /** 更新主题的背景图片 */
+  async updateThemeImage(themeId, imageFile) {
+    const theme = this.themes.get(themeId)
+    if (!theme) throw new Error(`Theme not found: ${themeId}`)
+
+    // 将新图片转为 data URL 并写回主题
+    const imageDataUrl = await this.fileToDataUrl(imageFile)
+    theme.image = imageDataUrl
+    this.saveToStorage()
+
+    // 如果这是当前激活的主题，通知监听器重新应用
+    if (this.activeThemeId === themeId) {
+      const updatedTheme = this.themes.get(themeId)
+      this.listeners.forEach(listener => listener(updatedTheme))
+    }
+  }
+
   /** 文件转 Data URL */
   fileToDataUrl(file) {
     return new Promise((resolve, reject) => {

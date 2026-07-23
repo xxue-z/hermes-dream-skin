@@ -1,6 +1,6 @@
 /**
  * Hermes Dream Skin Plugin
- * Generated at: 2026-07-22T08:53:48.498Z
+ * Generated at: 2026-07-23T03:30:00.160Z
  */
 
 import React from 'react'
@@ -24,7 +24,7 @@ const AREA_SELECTORS = {
 const DEFAULT_STYLES = {
   global: {
     font: { family: 'system-ui', size: 14, color: '#ffffff' },
-    background: { color: '#000000', opacity: 80 },
+    background: { color: '#000000' },
     border: { color: '#333333', width: 1, radius: 8 }
   },
   areas: {
@@ -44,8 +44,7 @@ const STYLE_METADATA = {
     color: { label: 'Font Color', type: 'color', default: '#ffffff', hasOpacity: true }
   },
   background: {
-    color: { label: 'Background Color', type: 'color', default: '#000000', hasOpacity: true },
-    opacity: { label: 'Opacity', type: 'range', min: 0, max: 100, unit: '%', default: 80 }
+    color: { label: 'Background Color', type: 'color', default: '#000000', hasOpacity: true }
   },
   border: {
     color: { label: 'Border Color', type: 'color', default: '#333333', hasOpacity: true },
@@ -91,8 +90,14 @@ function generatePreviewCSS(draftStyles) {
   lines.push('')
   lines.push('/* Global Background */')
   if (global?.background?.color) {
-    const opacity = ((global.background.opacity ?? 80) / 100).toFixed(2)
-    lines.push(`body { background-color: ${global.background.color}${Math.round(opacity * 255).toString(16).padStart(2, '0')}; }`)
+    const color = global.background.color
+    // 颜色已内嵌 alpha（#RRGGBBAA）时直接使用；否则叠加 background.opacity
+    if (color.length >= 9) {
+      lines.push(`body { background-color: ${color}; }`)
+    } else {
+      const opacity = ((global.background.opacity ?? 80) / 100).toFixed(2)
+      lines.push(`body { background-color: ${color}${Math.round(opacity * 255).toString(16).padStart(2, '0')}; }`)
+    }
   }
 
   lines.push('')
@@ -131,11 +136,16 @@ function generatePreviewCSS(draftStyles) {
  * @param {Function} props.onCancel - 取消回调
  * @param {boolean} [props.isNew=false] - 是否为新建模式（顶部显示保存按钮）
  */
-function StyleEditor({ theme, onSave, onCancel, isNew = false }) {
+function StyleEditor({ theme, onSave, onCancel, draftRef, isNew = false }) {
   const [activeTab, setActiveTab] = React.useState('global')
   const [draftStyles, setDraftStyles] = React.useState(() =>
     JSON.parse(JSON.stringify(theme?.styles || DEFAULT_STYLES))
   )
+
+  // 将最新草稿暴露给外层（供面板顶部"保持"按钮读取并保存）
+  React.useEffect(() => {
+    if (draftRef) draftRef.current = draftStyles
+  }, [draftStyles, draftRef])
 
   // 生成预览 CSS
   const previewCSS = React.useMemo(() => generatePreviewCSS(draftStyles), [draftStyles])
@@ -167,14 +177,6 @@ function StyleEditor({ theme, onSave, onCancel, isNew = false }) {
   }, [activeTab])
 
   return React.createElement('div', { className: 'space-y-4' },
-    // 新建模式：顶部操作栏（只保留 Save Theme，Back 按钮在 panel 中）
-    isNew && React.createElement('div', { className: 'flex items-center gap-2 pt-2 border-t' },
-      React.createElement('button', {
-        onClick: () => onSave(draftStyles),
-        className: 'px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium'
-      }, 'Save Theme')
-    ),
-
     // 标签栏
     React.createElement('div', { className: 'flex gap-1 border-b pb-2 overflow-x-auto' },
       TABS.map(tab =>
@@ -199,18 +201,6 @@ function StyleEditor({ theme, onSave, onCancel, isNew = false }) {
 
       // CSS 预览
       React.createElement(CSSPreview, { css: previewCSS })
-    ),
-
-    // 编辑模式：底部操作栏
-    !isNew && React.createElement('div', { className: 'flex gap-2 pt-2 border-t' },
-      React.createElement('button', {
-        onClick: () => onSave(draftStyles),
-        className: 'px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium'
-      }, '保存'),
-      React.createElement('button', {
-        onClick: onCancel,
-        className: 'px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-sm'
-      }, '取消')
     )
   )
 }
@@ -333,87 +323,190 @@ function CSSPreview({ css }) {
   )
 }
 
+// ── 颜色选择器辅助函数（自包含，无任何外部 CDN / 第三方库依赖） ──
+
+// 解析颜色值 -> { hex: '#RRGGBB', alpha: 0..1 }
+function cpParseColor(value) {
+  let hex = '#ffffff'
+  let alpha = 1
+  if (value && typeof value === 'string' && value[0] === '#') {
+    let h = value.slice(1)
+    if (h.length === 3 || h.length === 4) {
+      // #RGB / #RGBA 简写展开
+      h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2] + (h[3] || '')
+    }
+    if (h.length >= 8) {
+      alpha = parseInt(h.slice(6, 8), 16) / 255
+    }
+    if (/^[0-9a-fA-F]{6}$/.test(h.slice(0, 6))) {
+      hex = '#' + h.slice(0, 6)
+    }
+  }
+  return { hex, alpha }
+}
+
+// 组合 hex + alpha -> '#RRGGBBAA'
+function cpToHex8(hex, alpha) {
+  const a = Math.round(Math.max(0, Math.min(1, alpha)) * 255)
+  return `${hex}${a.toString(16).padStart(2, '0')}`
+}
+
+// 棋盘格背景（透明色通用指示图案，非主题色，固定中性灰）
+function cpCheckerboard() {
+  return {
+    backgroundImage:
+      'linear-gradient(45deg, #c8c8c8 25%, transparent 25%),' +
+      'linear-gradient(-45deg, #c8c8c8 25%, transparent 25%),' +
+      'linear-gradient(45deg, transparent 75%, #c8c8c8 75%),' +
+      'linear-gradient(-45deg, transparent 75%, #c8c8c8 75%)',
+    backgroundSize: '8px 8px',
+    backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0'
+  }
+}
+
+function cpPopoverStyle() {
+  return {
+    width: '280px',
+    top: 'calc(100% + 4px)',
+    left: '0',
+    boxShadow: '0 4px 24px rgba(0,0,0,0.15), 0 0 1px rgba(0,0,0,0.1)',
+    border: '1px solid rgba(0,0,0,0.08)'
+  }
+}
+
 /**
- * 颜色选择器组件（支持透明度，紧凑集成）
+ * 颜色选择器组件（自包含实现，无外部依赖）
+ *
+ * 同时支持：
+ * - 颜色选择：原生 <input type="color">，跨平台一致的取色体验
+ * - 透明度调整：meta.hasOpacity 为 true 时显示 Alpha 滑块，二者可在同一面板内同时调整
+ *
+ * 输出格式：hasOpacity 时返回 #RRGGBBAA，否则返回 #RRGGBB
  */
 function ColorPicker({ value, meta, onChange }) {
-  const [localValue, setLocalValue] = React.useState(value || meta.default || '#ffffff')
-  const [localOpacity, setLocalOpacity] = React.useState(100)
-  
-  React.useEffect(() => {
-    setLocalValue(value || meta.default || '#ffffff')
-  }, [value, meta.default])
+  const hasOpacity = !!meta?.hasOpacity
 
-  // 解析颜色值，获取 opacity
-  React.useEffect(() => {
-    if (typeof value === 'string' && value.length === 9 && value.startsWith('#')) {
-      const alphaHex = value.slice(7, 9)
-      const alpha = parseInt(alphaHex, 16) / 255
-      setLocalOpacity(Math.round(alpha * 100))
-    }
-  }, [value])
+  const parsed = React.useMemo(() => cpParseColor(value), [value])
+  const [isOpen, setIsOpen] = React.useState(false)
+  const containerRef = React.useRef(null)
+  const justClickedRef = React.useRef(false)
 
-  const handleColorChange = (e) => {
-    const newColor = e.target.value
-    setLocalValue(newColor)
-    if (meta.hasOpacity) {
-      const alphaHex = Math.round((localOpacity / 100) * 255).toString(16).padStart(2, '0')
-      onChange(newColor + alphaHex)
-    } else {
-      onChange(newColor)
-    }
+  const finalValue = hasOpacity ? cpToHex8(parsed.hex, parsed.alpha) : parsed.hex
+
+  const emit = React.useCallback((hex, alpha) => {
+    onChange(hasOpacity ? cpToHex8(hex, alpha) : hex)
+  }, [hasOpacity, onChange])
+
+  // 手动输入 hex（支持 6 位 / 8 位），仅在合法时才提交，避免中途输入破坏状态
+  const handleHexInput = (e) => {
+    const v = e.target.value.trim()
+    if (!/^#[0-9a-fA-F]{6}$/.test(v) && !/^#[0-9a-fA-F]{8}$/.test(v)) return
+    const p = cpParseColor(v)
+    emit(p.hex, hasOpacity ? p.alpha : 1)
   }
 
-  const handleOpacityChange = (e) => {
-    const opacity = Number(e.target.value)
-    setLocalOpacity(opacity)
-    if (meta.hasOpacity) {
-      const alphaHex = Math.round((opacity / 100) * 255).toString(16).padStart(2, '0')
-      onChange(localValue + alphaHex)
-    }
-  }
-
-  return React.createElement('div', { className: 'flex items-center gap-3 flex-1' },
-    // 颜色预览区域（含透明度）
-    React.createElement('div', {
-      className: 'relative w-8 h-8 rounded border overflow-hidden cursor-pointer flex-shrink-0',
-      style: {
-        backgroundColor: localValue.slice(0, 7),
-        opacity: meta.hasOpacity ? localOpacity / 100 : 1
+  // 点击外部关闭
+  React.useEffect(() => {
+    if (!isOpen) return
+    const onDocDown = (e) => {
+      if (justClickedRef.current) {
+        justClickedRef.current = false
+        return
       }
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDocDown)
+    return () => document.removeEventListener('mousedown', onDocDown)
+  }, [isOpen])
+
+  const handlePreviewClick = (e) => {
+    e.stopPropagation()
+    justClickedRef.current = true
+    setIsOpen((prev) => !prev)
+  }
+
+  const alphaPct = Math.round(parsed.alpha * 100)
+
+  return React.createElement('div', { className: 'relative flex items-center gap-3 flex-1' },
+    // 预览按钮（棋盘格透明指示 + 颜色叠加）
+    React.createElement('div', {
+      className: 'w-8 h-8 rounded border overflow-hidden cursor-pointer flex-shrink-0 relative',
+      onClick: handlePreviewClick,
+      role: 'button',
+      tabIndex: 0,
+      'aria-label': '选择颜色'
     },
-      React.createElement('input', {
-        type: 'color',
-        value: localValue.slice(0, 7),
-        onChange: handleColorChange,
-        className: 'absolute inset-0 w-full h-full opacity-0 cursor-pointer'
+      React.createElement('div', { className: 'absolute inset-0', style: cpCheckerboard() }),
+      React.createElement('div', {
+        className: 'absolute inset-0',
+        style: { backgroundColor: parsed.hex, opacity: hasOpacity ? parsed.alpha : 1 }
       })
     ),
-    // 颜色值 + 透明度（紧凑排列）
-    React.createElement('div', { className: 'flex items-center gap-2 flex-1 min-w-0' },
-      // 颜色值
-      React.createElement('span', { 
-        className: 'text-xs text-gray-400 font-mono flex-shrink-0',
-        style: { minWidth: '60px' }
-      }, localValue.slice(0, 7)),
-      // 透明度滑块（紧凑）
-      meta.hasOpacity && React.createElement('div', { 
-        className: 'flex items-center gap-1 flex-1 min-w-0',
-        style: { maxWidth: '120px' }
-      },
+    // 颜色值文本
+    React.createElement('span', {
+      className: 'text-xs text-gray-400 font-mono flex-shrink-0',
+      style: { minWidth: '74px' }
+    }, finalValue),
+
+    // Popover
+    isOpen && React.createElement('div', {
+      ref: containerRef,
+      className: 'absolute z-50 bg-white rounded-lg p-4 space-y-3',
+      style: cpPopoverStyle()
+    },
+      // 颜色选择（原生拾色器）
+      React.createElement('div', { className: 'flex items-center gap-2' },
         React.createElement('input', {
-          type: 'range',
-          min: 0,
-          max: 100,
-          value: localOpacity,
-          onChange: handleOpacityChange,
-          className: 'flex-1',
-          style: { height: '4px' }
+          type: 'color',
+          value: parsed.hex,
+          onChange: (e) => emit(e.target.value, hasOpacity ? parsed.alpha : 1),
+          className: 'w-10 h-10 cursor-pointer bg-transparent border-0 p-0',
+          'aria-label': '颜色'
         }),
-        React.createElement('span', { 
-          className: 'text-xs text-gray-500 font-mono flex-shrink-0',
-          style: { minWidth: '32px', textAlign: 'right' }
-        }, localOpacity + '%')
+        React.createElement('input', {
+          type: 'text',
+          value: finalValue,
+          onChange: handleHexInput,
+          spellCheck: false,
+          className: 'flex-1 px-2 py-1 text-xs font-mono border rounded'
+        })
+      ),
+
+      // 透明度滑块（仅 hasOpacity 时显示，与颜色选择同时存在）
+      hasOpacity && React.createElement('div', { className: 'space-y-1' },
+        React.createElement('div', { className: 'flex items-center justify-between text-xs text-gray-500' },
+          React.createElement('span', null, '透明度'),
+          React.createElement('span', { className: 'font-mono' }, `${alphaPct}%`)
+        ),
+        React.createElement('div', { className: 'flex items-center gap-2' },
+          React.createElement('input', {
+            type: 'range',
+            min: 0,
+            max: 100,
+            step: 1,
+            value: alphaPct,
+            onChange: (e) => emit(parsed.hex, Number(e.target.value) / 100),
+            className: 'flex-1'
+          }),
+          // 透明度预览条
+          React.createElement('div', {
+            className: 'w-6 h-6 rounded border overflow-hidden relative flex-shrink-0',
+            style: cpCheckerboard()
+          }, React.createElement('div', {
+            className: 'absolute inset-0',
+            style: { backgroundColor: parsed.hex, opacity: parsed.alpha }
+          }))
+        )
+      ),
+
+      // 确定按钮
+      React.createElement('div', { className: 'flex justify-end pt-2 border-t' },
+        React.createElement('button', {
+          className: 'px-3 py-1.5 rounded border border-(--ui-accent) bg-(--ui-accent) text-white hover:opacity-90 text-xs',
+          onClick: () => setIsOpen(false)
+        }, '确定')
       )
     )
   )
@@ -567,6 +660,23 @@ class ThemeManager {
     if (!theme) throw new Error(`Theme not found: ${themeId}`)
 
     theme.styles = styles
+    this.saveToStorage()
+
+    // 如果这是当前激活的主题，通知监听器重新应用
+    if (this.activeThemeId === themeId) {
+      const updatedTheme = this.themes.get(themeId)
+      this.listeners.forEach(listener => listener(updatedTheme))
+    }
+  }
+
+  /** 更新主题的背景图片 */
+  async updateThemeImage(themeId, imageFile) {
+    const theme = this.themes.get(themeId)
+    if (!theme) throw new Error(`Theme not found: ${themeId}`)
+
+    // 将新图片转为 data URL 并写回主题
+    const imageDataUrl = await this.fileToDataUrl(imageFile)
+    theme.image = imageDataUrl
     this.saveToStorage()
 
     // 如果这是当前激活的主题，通知监听器重新应用
@@ -844,12 +954,21 @@ class CSSInjector {
 
   /**
    * hex 颜色转 rgba
+   * 支持 8 位 hex（#RRGGBBAA）：优先使用内嵌的 alpha 通道，
+   * 否则回退到传入的 opacity 参数（兼容仅含 #RRGGBB 的旧配置）。
    */
   hexToRgba(hex, opacity) {
-    const clean = hex.replace('#', '')
-    const r = parseInt(clean.substring(0, 2), 16)
-    const g = parseInt(clean.substring(2, 4), 16)
-    const b = parseInt(clean.substring(4, 6), 16)
+    const clean = (hex || '').replace('#', '')
+    if (clean.length >= 8) {
+      const r = parseInt(clean.substring(0, 2), 16)
+      const g = parseInt(clean.substring(2, 4), 16)
+      const b = parseInt(clean.substring(4, 6), 16)
+      const a = parseInt(clean.substring(6, 8), 16) / 255
+      return `rgba(${r}, ${g}, ${b}, ${a})`
+    }
+    const r = parseInt(clean.substring(0, 2) || '0', 16)
+    const g = parseInt(clean.substring(2, 4) || '0', 16)
+    const b = parseInt(clean.substring(4, 6) || '0', 16)
     return `rgba(${r}, ${g}, ${b}, ${opacity})`
   }
 
@@ -952,6 +1071,10 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
   const [newThemeName, setNewThemeName] = React.useState('')
   const [selectedFile, setSelectedFile] = React.useState(null)
   const [newStyles, setNewStyles] = React.useState(null)
+  // 编辑视图中待保存的新背景图
+  const [editFile, setEditFile] = React.useState(null)
+  // 保存 StyleEditor 当前草稿，供顶部"保持"按钮读取
+  const draftRef = React.useRef(null)
 
   // 刷新主题列表
   const refreshThemes = React.useCallback(() => {
@@ -1021,14 +1144,24 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
   // 开始编辑主题
   const handleStartEdit = (theme) => {
     setEditingTheme(theme)
+    setEditFile(null)
     setView('edit')
   }
 
   // 保存编辑的主题
-  const handleSaveEdit = (styles) => {
+  const handleSaveEdit = async (styles) => {
     if (!editingTheme) return
 
     themeManager.updateThemeStyles(editingTheme.id, styles)
+
+    // 若更换了背景图，一并保存
+    if (editFile) {
+      try {
+        await themeManager.updateThemeImage(editingTheme.id, editFile)
+      } catch (e) {
+        console.error('[Dream Skin] Failed to update theme image:', e)
+      }
+    }
 
     // 如果是当前激活的主题，重新应用
     const active = themeManager.getActiveTheme()
@@ -1037,6 +1170,7 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
     }
 
     setEditingTheme(null)
+    setEditFile(null)
     setView('list')
     refreshThemes()
   }
@@ -1049,14 +1183,6 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
 
     themeManager.removeTheme(themeId)
     refreshThemes()
-  }
-
-  // 处理文件选择
-  const handleFileSelect = (e) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setSelectedFile(file)
-    }
   }
 
   return React.createElement('div', { className: 'p-4 space-y-4' },
@@ -1097,10 +1223,16 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
       // 顶部标题和按钮
       React.createElement('div', { className: 'flex items-center justify-between' },
         React.createElement('h2', { className: 'text-lg font-semibold' }, 'Add New Theme'),
-        React.createElement('button', {
-          onClick: () => setView('list'),
-          className: 'text-sm text-gray-500 hover:text-gray-700'
-        }, '← Back')
+        React.createElement('div', { className: 'flex items-center gap-2' },
+          React.createElement('button', {
+            onClick: () => handleSaveNewTheme(draftRef.current),
+            className: 'px-3 py-1.5 rounded border border-(--ui-accent) bg-(--ui-accent) text-white hover:opacity-90 text-sm'
+          }, '保持'),
+          React.createElement('button', {
+            onClick: () => { setNewThemeName(''); setSelectedFile(null); setView('list') },
+            className: 'px-3 py-1.5 rounded border border-(--ui-stroke-secondary) text-(--ui-text-secondary) hover:bg-(--chrome-action-hover) text-sm'
+          }, '取消')
+        )
       ),
 
       // 主题名称
@@ -1113,31 +1245,17 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
         })
       ),
 
-      // 背景图片
-      React.createElement('div', null,
-        React.createElement('label', { className: 'block text-sm font-medium mb-1' }, 'Background Image'),
-        React.createElement('input', {
-          type: 'file',
-          accept: 'image/*',
-          onChange: handleFileSelect,
-          className: 'block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100'
-        })
-      ),
-
-      // 预览
-      selectedFile && React.createElement('div', null,
-        React.createElement('label', { className: 'block text-sm font-medium mb-1' }, 'Preview'),
-        React.createElement('img', {
-          src: URL.createObjectURL(selectedFile),
-          alt: 'Preview',
-          className: 'w-full h-32 object-cover rounded-lg'
-        })
-      ),
+      // 背景图片（可拖入 + 点击选择）
+      React.createElement(BackgroundImageField, {
+        label: 'Background Image',
+        onFile: setSelectedFile
+      }),
 
       // 样式编辑器
       React.createElement(StyleEditor, {
         onSave: handleSaveNewTheme,
         onCancel: () => setView('list'),
+        draftRef,
         isNew: true
       })
     ),
@@ -1147,10 +1265,16 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
       // 顶部标题和按钮
       React.createElement('div', { className: 'flex items-center justify-between' },
         React.createElement('h2', { className: 'text-lg font-semibold' }, 'Edit Theme'),
-        React.createElement('button', {
-          onClick: () => { setView('list'); setEditingTheme(null) },
-          className: 'text-sm text-gray-500 hover:text-gray-700'
-        }, '← Back')
+        React.createElement('div', { className: 'flex items-center gap-2' },
+          React.createElement('button', {
+            onClick: () => handleSaveEdit(draftRef.current),
+            className: 'px-3 py-1.5 rounded border border-(--ui-accent) bg-(--ui-accent) text-white hover:opacity-90 text-sm'
+          }, '保持'),
+          React.createElement('button', {
+            onClick: () => { setView('list'); setEditingTheme(null); setEditFile(null) },
+            className: 'px-3 py-1.5 rounded border border-(--ui-stroke-secondary) text-(--ui-text-secondary) hover:bg-(--chrome-action-hover) text-sm'
+          }, '取消')
+        )
       ),
 
       // 主题名称（只读）
@@ -1162,22 +1286,83 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
         })
       ),
 
-      // 背景图片预览
-      editingTheme.image && React.createElement('div', null,
-        React.createElement('label', { className: 'block text-sm font-medium mb-1' }, 'Background Image'),
-        React.createElement('img', {
-          src: editingTheme.image,
-          alt: editingTheme.name,
-          className: 'w-full h-32 object-cover rounded-lg'
-        })
-      ),
+      // 背景图片（可拖入 + 点击选择，initialPreview 展示当前图）
+      React.createElement(BackgroundImageField, {
+        label: 'Background Image',
+        initialPreview: editingTheme.image,
+        onFile: setEditFile
+      }),
 
       // 样式编辑器
       React.createElement(StyleEditor, {
         theme: editingTheme,
         onSave: handleSaveEdit,
-        onCancel: () => { setView('list'); setEditingTheme(null) },
+        onCancel: () => { setView('list'); setEditingTheme(null); setEditFile(null) },
+        draftRef,
         isNew: false
+      })
+    )
+  )
+}
+
+/**
+ * 背景图片选择区（可拖入 + 点击选择）
+ *
+ * 设计要点：整块区域本身就是一个 <label>，文件输入以 sr-only 形式内联，
+ * 点击区域由浏览器原生打开文件对话框——不再依赖「隐藏的 <input> + 代码里调 .click()」
+ * 那种看不见的按钮逻辑。拖拽放下同样走原生 drag 事件。
+ */
+const SR_ONLY = {
+  position: 'absolute',
+  width: '1px',
+  height: '1px',
+  padding: 0,
+  margin: '-1px',
+  overflow: 'hidden',
+  clip: 'rect(0,0,0,0)',
+  whiteSpace: 'nowrap',
+  border: 0
+}
+
+function BackgroundImageField({ label, initialPreview, onFile }) {
+  const [preview, setPreview] = React.useState(initialPreview || null)
+  const [isDrag, setIsDrag] = React.useState(false)
+  const idRef = React.useRef('bg-input-' + Math.random().toString(36).slice(2))
+  const inputId = idRef.current
+
+  const handleFiles = React.useCallback((files) => {
+    const file = files && files[0]
+    if (!file) return
+    setPreview(URL.createObjectURL(file))
+    onFile(file)
+  }, [onFile])
+
+  return React.createElement('div', { className: 'space-y-2' },
+    React.createElement('label', { className: 'block text-sm font-medium' }, label),
+    React.createElement('label', {
+      htmlFor: inputId,
+      className: `flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-lg p-6 cursor-pointer text-center transition-colors ${isDrag ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}`,
+      onDragOver: (e) => { e.preventDefault(); setIsDrag(true) },
+      onDragLeave: (e) => { e.preventDefault(); setIsDrag(false) },
+      onDrop: (e) => { e.preventDefault(); setIsDrag(false); handleFiles(e.dataTransfer.files) }
+    },
+      preview
+        ? React.createElement('img', {
+            src: preview,
+            alt: '背景预览',
+            className: 'w-full h-32 object-cover rounded-lg pointer-events-none'
+          })
+        : React.createElement(React.Fragment, null,
+            React.createElement('div', { className: 'text-3xl text-gray-400' }, '⬆'),
+            React.createElement('div', { className: 'text-sm text-gray-600' }, '拖放图片到此处，或点击选择'),
+            React.createElement('div', { className: 'text-xs text-gray-400' }, '推荐 2560×1440 或更高')
+          ),
+      React.createElement('input', {
+        id: inputId,
+        type: 'file',
+        accept: 'image/*',
+        style: SR_ONLY,
+        onChange: (e) => handleFiles(e.target.files)
       })
     )
   )
@@ -1188,39 +1373,44 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
  * 选中态以边框颜色区分，不显示"Active"文本
  */
 function ThemeCard({ theme, isActive, onSwitch, onRemove, onEdit }) {
+  // 激活主题禁止修改/删除：编辑与删除按钮禁用
+  const actionBase = 'px-1.5 py-0.5 rounded border transition-colors'
+  const actionEnabled = 'text-(--ui-text-tertiary) border-(--ui-stroke-secondary)'
+  const actionDisabled = 'opacity-50 cursor-not-allowed text-(--ui-text-tertiary) border-(--ui-stroke-secondary)'
+
   return React.createElement('div', {
     className: `relative p-3 rounded-lg border-2 cursor-pointer transition-all ${
-      isActive ? 'border-blue-500 ring-2 ring-blue-200 bg-blue-50/30' : 'border-gray-200 hover:border-gray-400'
+      isActive ? 'border-(--ui-accent)' : 'border-(--ui-stroke-secondary) hover:border-(--ui-text-tertiary)'
     }`,
-    onClick: onSwitch
+    onClick: onSwitch,
+    title: isActive ? '当前激活主题（不可编辑/删除）' : '点击应用此主题'
   },
-    // 预览图
-    theme.image && React.createElement('img', {
-      src: theme.image,
-      alt: theme.name,
-      className: 'w-full h-20 object-cover rounded-md mb-2'
-    }),
-    // 主题信息
-    React.createElement('div', { className: 'flex items-center justify-between' },
-      React.createElement('div', null,
-        React.createElement('h3', { className: 'font-medium text-sm' }, theme.name)
-      ),
-      // 操作按钮
+    // 顶部：主题名 + 文字操作按钮
+    React.createElement('div', { className: 'flex items-center justify-between mb-2' },
+      React.createElement('h3', { className: 'font-medium text-sm' }, theme.name),
       React.createElement('div', { className: 'flex gap-1' },
         // 编辑按钮
         React.createElement('button', {
-          onClick: (e) => { e.stopPropagation(); onEdit() },
-          className: 'text-gray-400 hover:text-blue-500 transition-colors px-1',
-          title: 'Edit Styles'
+          disabled: isActive,
+          onClick: (e) => { e.stopPropagation(); if (!isActive) onEdit() },
+          className: `${actionBase} ${isActive ? actionDisabled : actionEnabled + ' hover:text-(--ui-accent) hover:border-(--ui-accent)'}`,
+          title: isActive ? '激活主题不可编辑' : 'Edit Styles'
         }, '✎'),
         // 删除按钮
         React.createElement('button', {
-          onClick: (e) => { e.stopPropagation(); onRemove() },
-          className: 'text-gray-400 hover:text-red-500 transition-colors px-1',
-          title: 'Delete Theme'
+          disabled: isActive,
+          onClick: (e) => { e.stopPropagation(); if (!isActive) onRemove() },
+          className: `${actionBase} ${isActive ? actionDisabled : actionEnabled + ' hover:text-(--ui-text-primary) hover:border-(--ui-text-primary)'}`,
+          title: isActive ? '激活主题不可删除' : 'Delete Theme'
         }, '×')
       )
-    )
+    ),
+    // 底部：预览图
+    theme.image && React.createElement('img', {
+      src: theme.image,
+      alt: theme.name,
+      className: 'w-full h-20 object-cover rounded-md'
+    })
   )
 }
 

@@ -255,12 +255,21 @@ export class CSSInjector {
 
   /**
    * hex 颜色转 rgba
+   * 支持 8 位 hex（#RRGGBBAA）：优先使用内嵌的 alpha 通道，
+   * 否则回退到传入的 opacity 参数（兼容仅含 #RRGGBB 的旧配置）。
    */
   hexToRgba(hex, opacity) {
-    const clean = hex.replace('#', '')
-    const r = parseInt(clean.substring(0, 2), 16)
-    const g = parseInt(clean.substring(2, 4), 16)
-    const b = parseInt(clean.substring(4, 6), 16)
+    const clean = (hex || '').replace('#', '')
+    if (clean.length >= 8) {
+      const r = parseInt(clean.substring(0, 2), 16)
+      const g = parseInt(clean.substring(2, 4), 16)
+      const b = parseInt(clean.substring(4, 6), 16)
+      const a = parseInt(clean.substring(6, 8), 16) / 255
+      return `rgba(${r}, ${g}, ${b}, ${a})`
+    }
+    const r = parseInt(clean.substring(0, 2) || '0', 16)
+    const g = parseInt(clean.substring(2, 4) || '0', 16)
+    const b = parseInt(clean.substring(4, 6) || '0', 16)
     return `rgba(${r}, ${g}, ${b}, ${opacity})`
   }
 

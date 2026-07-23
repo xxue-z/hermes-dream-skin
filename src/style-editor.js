@@ -35,8 +35,14 @@ function generatePreviewCSS(draftStyles) {
   lines.push('')
   lines.push('/* Global Background */')
   if (global?.background?.color) {
-    const opacity = ((global.background.opacity ?? 80) / 100).toFixed(2)
-    lines.push(`body { background-color: ${global.background.color}${Math.round(opacity * 255).toString(16).padStart(2, '0')}; }`)
+    const color = global.background.color
+    // 颜色已内嵌 alpha（#RRGGBBAA）时直接使用；否则叠加 background.opacity
+    if (color.length >= 9) {
+      lines.push(`body { background-color: ${color}; }`)
+    } else {
+      const opacity = ((global.background.opacity ?? 80) / 100).toFixed(2)
+      lines.push(`body { background-color: ${color}${Math.round(opacity * 255).toString(16).padStart(2, '0')}; }`)
+    }
   }
 
   lines.push('')
@@ -75,11 +81,16 @@ function generatePreviewCSS(draftStyles) {
  * @param {Function} props.onCancel - 取消回调
  * @param {boolean} [props.isNew=false] - 是否为新建模式（顶部显示保存按钮）
  */
-export function StyleEditor({ theme, onSave, onCancel, isNew = false }) {
+export function StyleEditor({ theme, onSave, onCancel, draftRef, isNew = false }) {
   const [activeTab, setActiveTab] = React.useState('global')
   const [draftStyles, setDraftStyles] = React.useState(() =>
     JSON.parse(JSON.stringify(theme?.styles || DEFAULT_STYLES))
   )
+
+  // 将最新草稿暴露给外层（供面板顶部"保持"按钮读取并保存）
+  React.useEffect(() => {
+    if (draftRef) draftRef.current = draftStyles
+  }, [draftStyles, draftRef])
 
   // 生成预览 CSS
   const previewCSS = React.useMemo(() => generatePreviewCSS(draftStyles), [draftStyles])
@@ -111,14 +122,6 @@ export function StyleEditor({ theme, onSave, onCancel, isNew = false }) {
   }, [activeTab])
 
   return React.createElement('div', { className: 'space-y-4' },
-    // 新建模式：顶部操作栏（只保留 Save Theme，Back 按钮在 panel 中）
-    isNew && React.createElement('div', { className: 'flex items-center gap-2 pt-2 border-t' },
-      React.createElement('button', {
-        onClick: () => onSave(draftStyles),
-        className: 'px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium'
-      }, 'Save Theme')
-    ),
-
     // 标签栏
     React.createElement('div', { className: 'flex gap-1 border-b pb-2 overflow-x-auto' },
       TABS.map(tab =>
@@ -143,18 +146,6 @@ export function StyleEditor({ theme, onSave, onCancel, isNew = false }) {
 
       // CSS 预览
       React.createElement(CSSPreview, { css: previewCSS })
-    ),
-
-    // 编辑模式：底部操作栏
-    !isNew && React.createElement('div', { className: 'flex gap-2 pt-2 border-t' },
-      React.createElement('button', {
-        onClick: () => onSave(draftStyles),
-        className: 'px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium'
-      }, '保存'),
-      React.createElement('button', {
-        onClick: onCancel,
-        className: 'px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-sm'
-      }, '取消')
     )
   )
 }
@@ -277,87 +268,190 @@ function CSSPreview({ css }) {
   )
 }
 
+// ── 颜色选择器辅助函数（自包含，无任何外部 CDN / 第三方库依赖） ──
+
+// 解析颜色值 -> { hex: '#RRGGBB', alpha: 0..1 }
+function cpParseColor(value) {
+  let hex = '#ffffff'
+  let alpha = 1
+  if (value && typeof value === 'string' && value[0] === '#') {
+    let h = value.slice(1)
+    if (h.length === 3 || h.length === 4) {
+      // #RGB / #RGBA 简写展开
+      h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2] + (h[3] || '')
+    }
+    if (h.length >= 8) {
+      alpha = parseInt(h.slice(6, 8), 16) / 255
+    }
+    if (/^[0-9a-fA-F]{6}$/.test(h.slice(0, 6))) {
+      hex = '#' + h.slice(0, 6)
+    }
+  }
+  return { hex, alpha }
+}
+
+// 组合 hex + alpha -> '#RRGGBBAA'
+function cpToHex8(hex, alpha) {
+  const a = Math.round(Math.max(0, Math.min(1, alpha)) * 255)
+  return `${hex}${a.toString(16).padStart(2, '0')}`
+}
+
+// 棋盘格背景（透明色通用指示图案，非主题色，固定中性灰）
+function cpCheckerboard() {
+  return {
+    backgroundImage:
+      'linear-gradient(45deg, #c8c8c8 25%, transparent 25%),' +
+      'linear-gradient(-45deg, #c8c8c8 25%, transparent 25%),' +
+      'linear-gradient(45deg, transparent 75%, #c8c8c8 75%),' +
+      'linear-gradient(-45deg, transparent 75%, #c8c8c8 75%)',
+    backgroundSize: '8px 8px',
+    backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0'
+  }
+}
+
+function cpPopoverStyle() {
+  return {
+    width: '280px',
+    top: 'calc(100% + 4px)',
+    left: '0',
+    boxShadow: '0 4px 24px rgba(0,0,0,0.15), 0 0 1px rgba(0,0,0,0.1)',
+    border: '1px solid rgba(0,0,0,0.08)'
+  }
+}
+
 /**
- * 颜色选择器组件（支持透明度，紧凑集成）
+ * 颜色选择器组件（自包含实现，无外部依赖）
+ *
+ * 同时支持：
+ * - 颜色选择：原生 <input type="color">，跨平台一致的取色体验
+ * - 透明度调整：meta.hasOpacity 为 true 时显示 Alpha 滑块，二者可在同一面板内同时调整
+ *
+ * 输出格式：hasOpacity 时返回 #RRGGBBAA，否则返回 #RRGGBB
  */
 function ColorPicker({ value, meta, onChange }) {
-  const [localValue, setLocalValue] = React.useState(value || meta.default || '#ffffff')
-  const [localOpacity, setLocalOpacity] = React.useState(100)
-  
-  React.useEffect(() => {
-    setLocalValue(value || meta.default || '#ffffff')
-  }, [value, meta.default])
+  const hasOpacity = !!meta?.hasOpacity
 
-  // 解析颜色值，获取 opacity
-  React.useEffect(() => {
-    if (typeof value === 'string' && value.length === 9 && value.startsWith('#')) {
-      const alphaHex = value.slice(7, 9)
-      const alpha = parseInt(alphaHex, 16) / 255
-      setLocalOpacity(Math.round(alpha * 100))
-    }
-  }, [value])
+  const parsed = React.useMemo(() => cpParseColor(value), [value])
+  const [isOpen, setIsOpen] = React.useState(false)
+  const containerRef = React.useRef(null)
+  const justClickedRef = React.useRef(false)
 
-  const handleColorChange = (e) => {
-    const newColor = e.target.value
-    setLocalValue(newColor)
-    if (meta.hasOpacity) {
-      const alphaHex = Math.round((localOpacity / 100) * 255).toString(16).padStart(2, '0')
-      onChange(newColor + alphaHex)
-    } else {
-      onChange(newColor)
-    }
+  const finalValue = hasOpacity ? cpToHex8(parsed.hex, parsed.alpha) : parsed.hex
+
+  const emit = React.useCallback((hex, alpha) => {
+    onChange(hasOpacity ? cpToHex8(hex, alpha) : hex)
+  }, [hasOpacity, onChange])
+
+  // 手动输入 hex（支持 6 位 / 8 位），仅在合法时才提交，避免中途输入破坏状态
+  const handleHexInput = (e) => {
+    const v = e.target.value.trim()
+    if (!/^#[0-9a-fA-F]{6}$/.test(v) && !/^#[0-9a-fA-F]{8}$/.test(v)) return
+    const p = cpParseColor(v)
+    emit(p.hex, hasOpacity ? p.alpha : 1)
   }
 
-  const handleOpacityChange = (e) => {
-    const opacity = Number(e.target.value)
-    setLocalOpacity(opacity)
-    if (meta.hasOpacity) {
-      const alphaHex = Math.round((opacity / 100) * 255).toString(16).padStart(2, '0')
-      onChange(localValue + alphaHex)
-    }
-  }
-
-  return React.createElement('div', { className: 'flex items-center gap-3 flex-1' },
-    // 颜色预览区域（含透明度）
-    React.createElement('div', {
-      className: 'relative w-8 h-8 rounded border overflow-hidden cursor-pointer flex-shrink-0',
-      style: {
-        backgroundColor: localValue.slice(0, 7),
-        opacity: meta.hasOpacity ? localOpacity / 100 : 1
+  // 点击外部关闭
+  React.useEffect(() => {
+    if (!isOpen) return
+    const onDocDown = (e) => {
+      if (justClickedRef.current) {
+        justClickedRef.current = false
+        return
       }
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDocDown)
+    return () => document.removeEventListener('mousedown', onDocDown)
+  }, [isOpen])
+
+  const handlePreviewClick = (e) => {
+    e.stopPropagation()
+    justClickedRef.current = true
+    setIsOpen((prev) => !prev)
+  }
+
+  const alphaPct = Math.round(parsed.alpha * 100)
+
+  return React.createElement('div', { className: 'relative flex items-center gap-3 flex-1' },
+    // 预览按钮（棋盘格透明指示 + 颜色叠加）
+    React.createElement('div', {
+      className: 'w-8 h-8 rounded border overflow-hidden cursor-pointer flex-shrink-0 relative',
+      onClick: handlePreviewClick,
+      role: 'button',
+      tabIndex: 0,
+      'aria-label': '选择颜色'
     },
-      React.createElement('input', {
-        type: 'color',
-        value: localValue.slice(0, 7),
-        onChange: handleColorChange,
-        className: 'absolute inset-0 w-full h-full opacity-0 cursor-pointer'
+      React.createElement('div', { className: 'absolute inset-0', style: cpCheckerboard() }),
+      React.createElement('div', {
+        className: 'absolute inset-0',
+        style: { backgroundColor: parsed.hex, opacity: hasOpacity ? parsed.alpha : 1 }
       })
     ),
-    // 颜色值 + 透明度（紧凑排列）
-    React.createElement('div', { className: 'flex items-center gap-2 flex-1 min-w-0' },
-      // 颜色值
-      React.createElement('span', { 
-        className: 'text-xs text-gray-400 font-mono flex-shrink-0',
-        style: { minWidth: '60px' }
-      }, localValue.slice(0, 7)),
-      // 透明度滑块（紧凑）
-      meta.hasOpacity && React.createElement('div', { 
-        className: 'flex items-center gap-1 flex-1 min-w-0',
-        style: { maxWidth: '120px' }
-      },
+    // 颜色值文本
+    React.createElement('span', {
+      className: 'text-xs text-gray-400 font-mono flex-shrink-0',
+      style: { minWidth: '74px' }
+    }, finalValue),
+
+    // Popover
+    isOpen && React.createElement('div', {
+      ref: containerRef,
+      className: 'absolute z-50 bg-white rounded-lg p-4 space-y-3',
+      style: cpPopoverStyle()
+    },
+      // 颜色选择（原生拾色器）
+      React.createElement('div', { className: 'flex items-center gap-2' },
         React.createElement('input', {
-          type: 'range',
-          min: 0,
-          max: 100,
-          value: localOpacity,
-          onChange: handleOpacityChange,
-          className: 'flex-1',
-          style: { height: '4px' }
+          type: 'color',
+          value: parsed.hex,
+          onChange: (e) => emit(e.target.value, hasOpacity ? parsed.alpha : 1),
+          className: 'w-10 h-10 cursor-pointer bg-transparent border-0 p-0',
+          'aria-label': '颜色'
         }),
-        React.createElement('span', { 
-          className: 'text-xs text-gray-500 font-mono flex-shrink-0',
-          style: { minWidth: '32px', textAlign: 'right' }
-        }, localOpacity + '%')
+        React.createElement('input', {
+          type: 'text',
+          value: finalValue,
+          onChange: handleHexInput,
+          spellCheck: false,
+          className: 'flex-1 px-2 py-1 text-xs font-mono border rounded'
+        })
+      ),
+
+      // 透明度滑块（仅 hasOpacity 时显示，与颜色选择同时存在）
+      hasOpacity && React.createElement('div', { className: 'space-y-1' },
+        React.createElement('div', { className: 'flex items-center justify-between text-xs text-gray-500' },
+          React.createElement('span', null, '透明度'),
+          React.createElement('span', { className: 'font-mono' }, `${alphaPct}%`)
+        ),
+        React.createElement('div', { className: 'flex items-center gap-2' },
+          React.createElement('input', {
+            type: 'range',
+            min: 0,
+            max: 100,
+            step: 1,
+            value: alphaPct,
+            onChange: (e) => emit(parsed.hex, Number(e.target.value) / 100),
+            className: 'flex-1'
+          }),
+          // 透明度预览条
+          React.createElement('div', {
+            className: 'w-6 h-6 rounded border overflow-hidden relative flex-shrink-0',
+            style: cpCheckerboard()
+          }, React.createElement('div', {
+            className: 'absolute inset-0',
+            style: { backgroundColor: parsed.hex, opacity: parsed.alpha }
+          }))
+        )
+      ),
+
+      // 确定按钮
+      React.createElement('div', { className: 'flex justify-end pt-2 border-t' },
+        React.createElement('button', {
+          className: 'px-3 py-1.5 rounded border border-(--ui-accent) bg-(--ui-accent) text-white hover:opacity-90 text-xs',
+          onClick: () => setIsOpen(false)
+        }, '确定')
       )
     )
   )
