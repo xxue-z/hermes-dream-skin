@@ -27,7 +27,11 @@ export class DreamSkinPlugin {
     // 2. 加载持久化的主题配置
     this.themeManager.loadFromStorage()
 
-    // 3. 如果有激活的主题，立即应用
+    // 3. 注入全局规则（与主题解耦的共享元素级覆盖）：插件启动即生效，
+    //    仅在主题激活（html.dream-skin-active）时显示。后续主题切换不影响它。
+    this.cssInjector.applyGlobalCSS(this.themeManager.getGlobalRules())
+
+    // 4. 如果有激活的主题，立即应用
     const activeTheme = this.themeManager.getActiveTheme()
     if (activeTheme) {
       this.cssInjector.applyTheme(activeTheme)

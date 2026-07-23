@@ -3,16 +3,62 @@
   "id": "preset-ultraman",
   "name": "奥特曼",
   "description": "光之巨人与你的代码世界并肩作战。",
-  "image": "background.jpg",
   "appearance": "auto",
   "art": {
-    "focusX": 0.50,
+    "focusX": 0.5,
     "focusY": 0.35,
     "safeArea": "center",
     "taskMode": "ambient"
   },
   "palette": {
-    "accent": "#0053FD",
-    "accentInk": "#FCFCFC"
+    "accent": "#8298a3",
+    "accentInk": "#111318"
+  },
+  "styles": {
+    "global": {
+      "font": {
+        "family": "\"Segoe UI Variable Text\", \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
+        "size": 14,
+        "color": "#edf0f1"
+      },
+      "background": {
+        "color": "#191c22",
+        "opacity": 86,
+        "gradient": false,
+        "glass": true
+      },
+      "border": {
+        "color": "#8298a3",
+        "width": 0,
+        "radius": 0
+      }
+    },
+    "areas": {
+      "topBar": {
+        "enabled": false,
+        "font": {},
+        "background": {},
+        "border": {}
+      },
+      "leftSidebar": {
+        "enabled": false,
+        "font": {},
+        "background": {},
+        "border": {}
+      },
+      "chatArea": {
+        "enabled": false,
+        "font": {},
+        "background": {},
+        "border": {}
+      },
+      "bottomBar": {
+        "enabled": false,
+        "font": {},
+        "background": {},
+        "border": {}
+      }
+    },
+    "customCSS": ":root{\n  color-scheme:dark;\n  --ds-bg:#111318; --ds-panel:#191c22; --ds-panel-2:#20242b;\n  --ds-green:#8298a3; --ds-lime:#a0adb3; --ds-cyan:#8da397; --ds-purple:#9d94a3;\n  --ds-text:#edf0f1; --ds-muted:#a3aaae; --ds-line:rgba(130,152,163,.24);\n  --ds-bg-rgb:17 19 24; --ds-panel-rgb:25 28 34; --ds-panel-2-rgb:32 36 43;\n  --ds-text-rgb:237 240 241; --ds-muted-rgb:163 170 174;\n  --ds-accent-rgb:130 152 163; --ds-secondary-rgb:141 163 151; --ds-highlight-rgb:141 163 151;\n  --ds-accent:var(--ds-green); --ds-accent-soft:var(--ds-lime);\n  --ds-secondary:var(--ds-cyan); --ds-highlight:var(--ds-purple);\n  --ds-on-accent:rgb(var(--ds-bg-rgb)/1);\n  --ds-hero-scrim:linear-gradient(90deg,rgb(var(--ds-bg-rgb)/.90) 0%,rgb(var(--ds-bg-rgb)/.76) 50%,rgb(var(--ds-bg-rgb)/.18) 84%,transparent 100%);\n  --ds-task-shade:linear-gradient(90deg,rgb(var(--ds-bg-rgb)/.56) 0%,rgb(var(--ds-bg-rgb)/.36) 48%,rgb(var(--ds-bg-rgb)/.12) 100%);\n  --ds-task-fade:linear-gradient(180deg,rgb(var(--ds-bg-rgb)/.10) 0%,rgb(var(--ds-bg-rgb)/.18) 32%,rgb(var(--ds-bg-rgb)/.76) 68%,rgb(var(--ds-bg-rgb)/1) 100%);\n  --ds-immersive-edge:rgb(var(--ds-bg-rgb)/.40); --ds-immersive-mid:rgb(var(--ds-bg-rgb)/.26); --ds-immersive-far:rgb(var(--ds-bg-rgb)/.16);\n  --ds-immersive-sidebar:rgb(var(--ds-panel-rgb)/.46); --ds-task-immersive-sidebar:rgb(var(--ds-panel-rgb)/.70);\n  --ds-immersive-chrome:rgb(var(--ds-panel-rgb)/.28); --ds-immersive-composer:rgb(var(--ds-panel-rgb)/.44);\n  --ds-immersive-composer-solid:color-mix(in srgb,rgb(var(--ds-panel-2-rgb)) 88%,rgb(var(--ds-muted-rgb)) 12%);\n  --ds-immersive-line:rgb(var(--ds-muted-rgb)/.42);\n  --ds-task-immersive-edge:rgb(var(--ds-bg-rgb)/.82); --ds-task-immersive-mid:rgb(var(--ds-bg-rgb)/.74); --ds-task-immersive-far:rgb(var(--ds-bg-rgb)/.60);\n}\n/* Codex :root.codex-dream-skin 默认调色板（青/绿） */\n:root{\n  color-scheme:dark;\n  --ds-bg:#111318; --ds-panel:#191c22; --ds-panel-2:#20242b;\n  --ds-green:#8298a3; --ds-lime:#a0adb3; --ds-cyan:#8da397; --ds-purple:#9d94a3;\n  --ds-text:#edf0f1; --ds-muted:#a3aaae; --ds-line:rgba(130,152,163,.24);\n  --ds-bg-rgb:17 19 24; --ds-panel-rgb:25 28 34; --ds-panel-2-rgb:32 36 43;\n  --ds-text-rgb:237 240 241; --ds-muted-rgb:163 170 174;\n  --ds-accent-rgb:130 152 163; --ds-secondary-rgb:141 163 151; --ds-highlight-rgb:157 148 163;\n  --ds-accent:var(--ds-green); --ds-accent-soft:var(--ds-lime);\n  --ds-secondary:var(--ds-cyan); --ds-highlight:var(--ds-purple);\n  --ds-on-accent:rgb(var(--ds-bg-rgb)/1);\n}"
   }
 }

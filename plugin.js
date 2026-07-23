@@ -1,6 +1,6 @@
 /**
  * Hermes Dream Skin Plugin
- * Generated at: 2026-07-23T03:30:00.160Z
+ * Generated at: 2026-07-23T09:52:27.540Z
  */
 
 import React from 'react'
@@ -12,20 +12,102 @@ import React from 'react'
  * 定义区域选择器映射、默认样式结构和 UI 元数据
  */
 
-/** 区域到 DOM 选择器的映射 */
+/** 区域到 DOM 选择器的映射（选择器均来自 docs/hermes-desktop-plugin-dev 的已验证清单） */
 const AREA_SELECTORS = {
-  topBar: '[data-slot="statusbar"], div[class*="h-[34px]"]',
+  topBar: 'div[class*="h-[34px]"]',
   leftSidebar: '[data-tree-group="grp-sessions"]',
-  chatArea: '[data-slot="composer-bounds"]',
+  chatArea: '[data-tree-group="grp-main"]',
   bottomBar: '[data-slot="statusbar"]'
 }
 
-/** 默认样式结构 */
+/**
+ * 默认样式结构
+ *
+ * 移植自 Codex-Dream-Skin 的「默认主题」（macos/assets/dream-skin.css 的
+ * --ds-* 调色板 + ultraman-theme/dream-skin.css 的元素规则）。
+ *
+ * ⚠️ 选择器均按本侧（Hermes）宿主 DOM 重写，并对照
+ *    docs/hermes-desktop-plugin-dev（hermes-dom-selectors.md / SKILL.md）的「已验证」清单核对：
+ *   - 根标记：   html.dream-skin-active
+ *   - 侧栏：     [data-tree-group="grp-sessions"]
+ *   - 主内容区： [data-tree-group="grp-main"]
+ *   - 消息视口： [data-slot="aui_thread-viewport"]
+ *   - 用户消息： [data-role="user"]          助手消息： [data-slot="aui_assistant-message-root"]
+ *   - 输入框：   [data-slot="composer-surface"]   （外层 [data-slot="composer-bounds"]）
+ *   - 顶栏：     div[class*="h-[34px]"]         底栏： [data-slot="statusbar"]
+ *   - 变量：     --ds-* / --dream-skin-*
+ *   背景图不靠把 background-image 写到主区（会被覆盖），而由 css-injector.injectChrome()
+ *   以「固定背景层」（body.firstChild，无 z-index / 无 opacity:0）注入；主区保持透明露出背景层。
+ */
+/**
+ * 主题「调色板」（per-theme，放入主题文件 styles.customCSS）
+ *
+ * 仅包含 :root 变量定义——颜色 / 字体随主题变化的部分。
+ * 元素级覆盖（侧栏、聊天区、输入框…）统一抽到 DEFAULT_GLOBAL_CSS（全局规则），
+ * 它们引用 --ds-* 变量，由当前激活主题的这份调色板供给颜色。
+ */
+const DEFAULT_PALETTE_CSS = `:root{
+  color-scheme:dark;
+  --ds-bg:#111318; --ds-panel:#191c22; --ds-panel-2:#20242b;
+  --ds-green:#8298a3; --ds-lime:#a0adb3; --ds-cyan:#8da397; --ds-purple:#9d94a3;
+  --ds-text:#edf0f1; --ds-muted:#a3aaae; --ds-line:rgba(130,152,163,.24);
+  --ds-bg-rgb:17 19 24; --ds-panel-rgb:25 28 34; --ds-panel-2-rgb:32 36 43;
+  --ds-text-rgb:237 240 241; --ds-muted-rgb:163 170 174;
+  --ds-accent-rgb:130 152 163; --ds-secondary-rgb:141 163 151; --ds-highlight-rgb:141 163 151;
+  --ds-accent:var(--ds-green); --ds-accent-soft:var(--ds-lime);
+  --ds-secondary:var(--ds-cyan); --ds-highlight:var(--ds-purple);
+  --ds-on-accent:rgb(var(--ds-bg-rgb)/1);
+  --ds-hero-scrim:linear-gradient(90deg,rgb(var(--ds-bg-rgb)/.90) 0%,rgb(var(--ds-bg-rgb)/.76) 50%,rgb(var(--ds-bg-rgb)/.18) 84%,transparent 100%);
+  --ds-task-shade:linear-gradient(90deg,rgb(var(--ds-bg-rgb)/.56) 0%,rgb(var(--ds-bg-rgb)/.36) 48%,rgb(var(--ds-bg-rgb)/.12) 100%);
+  --ds-task-fade:linear-gradient(180deg,rgb(var(--ds-bg-rgb)/.10) 0%,rgb(var(--ds-bg-rgb)/.18) 32%,rgb(var(--ds-bg-rgb)/.76) 68%,rgb(var(--ds-bg-rgb)/1) 100%);
+  --ds-immersive-edge:rgb(var(--ds-bg-rgb)/.40); --ds-immersive-mid:rgb(var(--ds-bg-rgb)/.26); --ds-immersive-far:rgb(var(--ds-bg-rgb)/.16);
+  --ds-immersive-sidebar:rgb(var(--ds-panel-rgb)/.46); --ds-task-immersive-sidebar:rgb(var(--ds-panel-rgb)/.70);
+  --ds-immersive-chrome:rgb(var(--ds-panel-rgb)/.28); --ds-immersive-composer:rgb(var(--ds-panel-rgb)/.44);
+  --ds-immersive-composer-solid:color-mix(in srgb,rgb(var(--ds-panel-2-rgb)) 88%,rgb(var(--ds-muted-rgb)) 12%);
+  --ds-immersive-line:rgb(var(--ds-muted-rgb)/.42);
+  --ds-task-immersive-edge:rgb(var(--ds-bg-rgb)/.82); --ds-task-immersive-mid:rgb(var(--ds-bg-rgb)/.74); --ds-task-immersive-far:rgb(var(--ds-bg-rgb)/.60);
+}`
+
+/**
+ * 全局规则（与主题解耦，不放入主题文件）
+ *
+ * ⚠️ 职责定位：GLOBAL RULES 只做「中性化」——移除 Hermes Desktop 默认的
+ *    不透明背景 / 默认模糊 / 默认边框等，让主题的样式（在全局规则之后注入）能
+ *    正常接管。它**不做任何装饰性处理**（例如把官方白色背景改成玻璃蒙板）。
+ *
+ * 装饰性效果（玻璃蒙板、渐变、面板配色等）一律由「主题背景设置」提供，
+ * 见 src/style-config.js 的 DEFAULT_STYLES.global.background（color / opacity /
+ * gradient / glass），由 css-injector.generateStructuredCSS 生成、随主题注入。
+ *
+ * 注入时机：插件启动时即写入独立的 <style id="hermes-dream-skin-global">，
+ * 对应用户界面立即生效；面板「Global Rules」弹框可查看 / 修改并即时重注入。
+ *
+ * ⚠️ 聊天区白底根因：宿主 Tailwind 工具类 bg-(--ui-chat-surface-background) 编译为
+ *    .bg-\(--ui-chat-surface-background\){background-color:var(--ui-chat-surface-background)}。
+ *    此处把该变量在 dream-skin-active 作用域内重定义为 **transparent**，
+ *    让工具类自身解析成透明，彻底消除白底。
+ */
+const DEFAULT_GLOBAL_CSS = `html.dream-skin-active{color:var(--ds-text)!important;}
+html.dream-skin-active [data-tree-group="grp-sessions"]{background:transparent!important;backdrop-filter:none!important;border-color:transparent!important;}
+html.dream-skin-active [data-tree-group="grp-main"]{background:transparent!important;border-color:transparent!important;}
+html.dream-skin-active [data-composer-target="main"][data-session-anchor="workspace"]{background-color:transparent!important;}
+html.dream-skin-active [data-slot="aui_thread-viewport"]{background:transparent!important;}
+html.dream-skin-active [data-role="user"],html.dream-skin-active [data-slot="aui_assistant-message-root"]{background:transparent!important;backdrop-filter:none!important;}
+html.dream-skin-active [data-slot="composer-surface"]{background:transparent!important;backdrop-filter:none!important;}
+html.dream-skin-active{--ui-chat-surface-background:transparent;--ui-sidebar-surface-background:transparent;}
+@media (prefers-reduced-motion: reduce){
+  html.dream-skin-active *{transition-duration:.01ms!important;scroll-behavior:auto!important;}
+}`
+
 const DEFAULT_STYLES = {
   global: {
-    font: { family: 'system-ui', size: 14, color: '#ffffff' },
-    background: { color: '#000000' },
-    border: { color: '#333333', width: 1, radius: 8 }
+    font: {
+      family: '"Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif',
+      size: 14,
+      color: '#edf0f1'
+    },
+    background: { color: '#191c22', opacity: 86, gradient: false, glass: true },
+    border: { color: '#8298a3', width: 0, radius: 0 }
   },
   areas: {
     topBar: { enabled: false, font: {}, background: {}, border: {} },
@@ -33,7 +115,9 @@ const DEFAULT_STYLES = {
     chatArea: { enabled: false, font: {}, background: {}, border: {} },
     bottomBar: { enabled: false, font: {}, background: {}, border: {} }
   },
-  customCSS: ''
+  // 主题文件（per-theme）仅携带调色板；元素级覆盖见下方 globalCSS（全局规则）
+  customCSS: DEFAULT_PALETTE_CSS,
+  globalCSS: DEFAULT_GLOBAL_CSS
 }
 
 /** 样式属性的 UI 元数据 */
@@ -44,7 +128,10 @@ const STYLE_METADATA = {
     color: { label: 'Font Color', type: 'color', default: '#ffffff', hasOpacity: true }
   },
   background: {
-    color: { label: 'Background Color', type: 'color', default: '#000000', hasOpacity: true }
+    color: { label: 'Background Color', type: 'color', default: '#191c22', hasOpacity: false },
+    opacity: { label: 'Opacity', type: 'range', min: 0, max: 100, unit: '%', default: 86 },
+    gradient: { label: 'Enable Gradient', type: 'checkbox', default: false },
+    glass: { label: 'Glass Mask', type: 'checkbox', default: true }
   },
   border: {
     color: { label: 'Border Color', type: 'color', default: '#333333', hasOpacity: true },
@@ -52,6 +139,190 @@ const STYLE_METADATA = {
     radius: { label: 'Border Radius', type: 'range', min: 0, max: 24, unit: 'px', default: 8 }
   }
 }
+
+// --- presets.js ---
+// AUTO-GENERATED by sync-presets.mjs — 请勿手改。
+// 三套预设的「打包种子」：保证细化后的配色进入 plugin.js 运行时，
+// 不依赖宿主文件系统读取 themes/*.json（插件运行时只从 PluginStorage 取主题）。
+const PRESET_THEMES = [
+  {
+    "id": "preset-ultraman",
+    "name": "Ultraman",
+    "appearance": "auto",
+    "art": {
+      "focusX": 0.5,
+      "focusY": 0.35,
+      "safeArea": "center",
+      "taskMode": "ambient"
+    },
+    "image": null,
+    "styles": {
+      "global": {
+        "font": {
+          "family": "\"Segoe UI Variable Text\", \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
+          "size": 14,
+          "color": "#edf0f1"
+        },
+        "background": {
+          "color": "#191c22",
+          "opacity": 86,
+          "gradient": false,
+          "glass": true
+        },
+        "border": {
+          "color": "#8298a3",
+          "width": 0,
+          "radius": 0
+        }
+      },
+      "areas": {
+        "topBar": {
+          "enabled": false,
+          "font": {},
+          "background": {},
+          "border": {}
+        },
+        "leftSidebar": {
+          "enabled": false,
+          "font": {},
+          "background": {},
+          "border": {}
+        },
+        "chatArea": {
+          "enabled": false,
+          "font": {},
+          "background": {},
+          "border": {}
+        },
+        "bottomBar": {
+          "enabled": false,
+          "font": {},
+          "background": {},
+          "border": {}
+        }
+      },
+      "customCSS": ":root{\n  color-scheme:dark;\n  --ds-bg:#111318; --ds-panel:#191c22; --ds-panel-2:#20242b;\n  --ds-green:#8298a3; --ds-lime:#a0adb3; --ds-cyan:#8da397; --ds-purple:#9d94a3;\n  --ds-text:#edf0f1; --ds-muted:#a3aaae; --ds-line:rgba(130,152,163,.24);\n  --ds-bg-rgb:17 19 24; --ds-panel-rgb:25 28 34; --ds-panel-2-rgb:32 36 43;\n  --ds-text-rgb:237 240 241; --ds-muted-rgb:163 170 174;\n  --ds-accent-rgb:130 152 163; --ds-secondary-rgb:141 163 151; --ds-highlight-rgb:141 163 151;\n  --ds-accent:var(--ds-green); --ds-accent-soft:var(--ds-lime);\n  --ds-secondary:var(--ds-cyan); --ds-highlight:var(--ds-purple);\n  --ds-on-accent:rgb(var(--ds-bg-rgb)/1);\n  --ds-hero-scrim:linear-gradient(90deg,rgb(var(--ds-bg-rgb)/.90) 0%,rgb(var(--ds-bg-rgb)/.76) 50%,rgb(var(--ds-bg-rgb)/.18) 84%,transparent 100%);\n  --ds-task-shade:linear-gradient(90deg,rgb(var(--ds-bg-rgb)/.56) 0%,rgb(var(--ds-bg-rgb)/.36) 48%,rgb(var(--ds-bg-rgb)/.12) 100%);\n  --ds-task-fade:linear-gradient(180deg,rgb(var(--ds-bg-rgb)/.10) 0%,rgb(var(--ds-bg-rgb)/.18) 32%,rgb(var(--ds-bg-rgb)/.76) 68%,rgb(var(--ds-bg-rgb)/1) 100%);\n  --ds-immersive-edge:rgb(var(--ds-bg-rgb)/.40); --ds-immersive-mid:rgb(var(--ds-bg-rgb)/.26); --ds-immersive-far:rgb(var(--ds-bg-rgb)/.16);\n  --ds-immersive-sidebar:rgb(var(--ds-panel-rgb)/.46); --ds-task-immersive-sidebar:rgb(var(--ds-panel-rgb)/.70);\n  --ds-immersive-chrome:rgb(var(--ds-panel-rgb)/.28); --ds-immersive-composer:rgb(var(--ds-panel-rgb)/.44);\n  --ds-immersive-composer-solid:color-mix(in srgb,rgb(var(--ds-panel-2-rgb)) 88%,rgb(var(--ds-muted-rgb)) 12%);\n  --ds-immersive-line:rgb(var(--ds-muted-rgb)/.42);\n  --ds-task-immersive-edge:rgb(var(--ds-bg-rgb)/.82); --ds-task-immersive-mid:rgb(var(--ds-bg-rgb)/.74); --ds-task-immersive-far:rgb(var(--ds-bg-rgb)/.60);\n}\n/* Codex :root.codex-dream-skin 默认调色板（青/绿） */\n:root{\n  color-scheme:dark;\n  --ds-bg:#111318; --ds-panel:#191c22; --ds-panel-2:#20242b;\n  --ds-green:#8298a3; --ds-lime:#a0adb3; --ds-cyan:#8da397; --ds-purple:#9d94a3;\n  --ds-text:#edf0f1; --ds-muted:#a3aaae; --ds-line:rgba(130,152,163,.24);\n  --ds-bg-rgb:17 19 24; --ds-panel-rgb:25 28 34; --ds-panel-2-rgb:32 36 43;\n  --ds-text-rgb:237 240 241; --ds-muted-rgb:163 170 174;\n  --ds-accent-rgb:130 152 163; --ds-secondary-rgb:141 163 151; --ds-highlight-rgb:157 148 163;\n  --ds-accent:var(--ds-green); --ds-accent-soft:var(--ds-lime);\n  --ds-secondary:var(--ds-cyan); --ds-highlight:var(--ds-purple);\n  --ds-on-accent:rgb(var(--ds-bg-rgb)/1);\n}"
+    }
+  },
+  {
+    "id": "preset-arina-hashimoto",
+    "name": "Arina Hashimoto",
+    "appearance": "auto",
+    "art": {
+      "focusX": 0.5,
+      "focusY": 0.35,
+      "safeArea": "center",
+      "taskMode": "ambient"
+    },
+    "image": null,
+    "styles": {
+      "global": {
+        "font": {
+          "family": "\"Segoe UI Variable Text\", \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
+          "size": 14,
+          "color": "#edf0f1"
+        },
+        "background": {
+          "color": "#241b1e",
+          "opacity": 86,
+          "gradient": false,
+          "glass": true
+        },
+        "border": {
+          "color": "#8298a3",
+          "width": 0,
+          "radius": 0
+        }
+      },
+      "areas": {
+        "topBar": {
+          "enabled": false,
+          "font": {},
+          "background": {},
+          "border": {}
+        },
+        "leftSidebar": {
+          "enabled": false,
+          "font": {},
+          "background": {},
+          "border": {}
+        },
+        "chatArea": {
+          "enabled": false,
+          "font": {},
+          "background": {},
+          "border": {}
+        },
+        "bottomBar": {
+          "enabled": false,
+          "font": {},
+          "background": {},
+          "border": {}
+        }
+      },
+      "customCSS": ":root{\n  color-scheme:dark;\n  --ds-bg:#111318; --ds-panel:#191c22; --ds-panel-2:#20242b;\n  --ds-green:#8298a3; --ds-lime:#a0adb3; --ds-cyan:#8da397; --ds-purple:#9d94a3;\n  --ds-text:#edf0f1; --ds-muted:#a3aaae; --ds-line:rgba(130,152,163,.24);\n  --ds-bg-rgb:17 19 24; --ds-panel-rgb:25 28 34; --ds-panel-2-rgb:32 36 43;\n  --ds-text-rgb:237 240 241; --ds-muted-rgb:163 170 174;\n  --ds-accent-rgb:130 152 163; --ds-secondary-rgb:141 163 151; --ds-highlight-rgb:141 163 151;\n  --ds-accent:var(--ds-green); --ds-accent-soft:var(--ds-lime);\n  --ds-secondary:var(--ds-cyan); --ds-highlight:var(--ds-purple);\n  --ds-on-accent:rgb(var(--ds-bg-rgb)/1);\n  --ds-hero-scrim:linear-gradient(90deg,rgb(var(--ds-bg-rgb)/.90) 0%,rgb(var(--ds-bg-rgb)/.76) 50%,rgb(var(--ds-bg-rgb)/.18) 84%,transparent 100%);\n  --ds-task-shade:linear-gradient(90deg,rgb(var(--ds-bg-rgb)/.56) 0%,rgb(var(--ds-bg-rgb)/.36) 48%,rgb(var(--ds-bg-rgb)/.12) 100%);\n  --ds-task-fade:linear-gradient(180deg,rgb(var(--ds-bg-rgb)/.10) 0%,rgb(var(--ds-bg-rgb)/.18) 32%,rgb(var(--ds-bg-rgb)/.76) 68%,rgb(var(--ds-bg-rgb)/1) 100%);\n  --ds-immersive-edge:rgb(var(--ds-bg-rgb)/.40); --ds-immersive-mid:rgb(var(--ds-bg-rgb)/.26); --ds-immersive-far:rgb(var(--ds-bg-rgb)/.16);\n  --ds-immersive-sidebar:rgb(var(--ds-panel-rgb)/.46); --ds-task-immersive-sidebar:rgb(var(--ds-panel-rgb)/.70);\n  --ds-immersive-chrome:rgb(var(--ds-panel-rgb)/.28); --ds-immersive-composer:rgb(var(--ds-panel-rgb)/.44);\n  --ds-immersive-composer-solid:color-mix(in srgb,rgb(var(--ds-panel-2-rgb)) 88%,rgb(var(--ds-muted-rgb)) 12%);\n  --ds-immersive-line:rgb(var(--ds-muted-rgb)/.42);\n  --ds-task-immersive-edge:rgb(var(--ds-bg-rgb)/.82); --ds-task-immersive-mid:rgb(var(--ds-bg-rgb)/.74); --ds-task-immersive-far:rgb(var(--ds-bg-rgb)/.60);\n}\n/* Codex 默认主题签名色 #E25563，改为暗色玫瑰主题 */\n:root{\n  color-scheme:dark;\n  --ds-bg:#1a1416; --ds-panel:#241b1e; --ds-panel-2:#2e2226;\n  --ds-green:#E25563; --ds-lime:#F07A86; --ds-cyan:#F3A8AF; --ds-purple:#C93D4C;\n  --ds-text:#f6eef0; --ds-muted:#b59aa0; --ds-line:rgba(226,85,99,.24);\n  --ds-bg-rgb:26 20 22; --ds-panel-rgb:36 27 30; --ds-panel-2-rgb:46 34 38;\n  --ds-text-rgb:246 238 240; --ds-muted-rgb:181 154 160;\n  --ds-accent-rgb:226 85 99; --ds-secondary-rgb:243 168 175; --ds-highlight-rgb:201 61 76;\n  --ds-accent:var(--ds-green); --ds-accent-soft:var(--ds-lime);\n  --ds-secondary:var(--ds-cyan); --ds-highlight:var(--ds-purple);\n  --ds-on-accent:rgb(var(--ds-bg-rgb)/1);\n}"
+    }
+  },
+  {
+    "id": "preset-gothic-void-crusade",
+    "name": "Gothic Void Crusade",
+    "appearance": "auto",
+    "art": {
+      "focusX": 0.5,
+      "focusY": 0.35,
+      "safeArea": "center",
+      "taskMode": "ambient"
+    },
+    "image": null,
+    "styles": {
+      "global": {
+        "font": {
+          "family": "\"Segoe UI Variable Text\", \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
+          "size": 14,
+          "color": "#edf0f1"
+        },
+        "background": {
+          "color": "#171513",
+          "opacity": 86,
+          "gradient": false,
+          "glass": true
+        },
+        "border": {
+          "color": "#8298a3",
+          "width": 0,
+          "radius": 0
+        }
+      },
+      "areas": {
+        "topBar": {
+          "enabled": false,
+          "font": {},
+          "background": {},
+          "border": {}
+        },
+        "leftSidebar": {
+          "enabled": false,
+          "font": {},
+          "background": {},
+          "border": {}
+        },
+        "chatArea": {
+          "enabled": false,
+          "font": {},
+          "background": {},
+          "border": {}
+        },
+        "bottomBar": {
+          "enabled": false,
+          "font": {},
+          "background": {},
+          "border": {}
+        }
+      },
+      "customCSS": ":root{\n  color-scheme:dark;\n  --ds-bg:#111318; --ds-panel:#191c22; --ds-panel-2:#20242b;\n  --ds-green:#8298a3; --ds-lime:#a0adb3; --ds-cyan:#8da397; --ds-purple:#9d94a3;\n  --ds-text:#edf0f1; --ds-muted:#a3aaae; --ds-line:rgba(130,152,163,.24);\n  --ds-bg-rgb:17 19 24; --ds-panel-rgb:25 28 34; --ds-panel-2-rgb:32 36 43;\n  --ds-text-rgb:237 240 241; --ds-muted-rgb:163 170 174;\n  --ds-accent-rgb:130 152 163; --ds-secondary-rgb:141 163 151; --ds-highlight-rgb:141 163 151;\n  --ds-accent:var(--ds-green); --ds-accent-soft:var(--ds-lime);\n  --ds-secondary:var(--ds-cyan); --ds-highlight:var(--ds-purple);\n  --ds-on-accent:rgb(var(--ds-bg-rgb)/1);\n  --ds-hero-scrim:linear-gradient(90deg,rgb(var(--ds-bg-rgb)/.90) 0%,rgb(var(--ds-bg-rgb)/.76) 50%,rgb(var(--ds-bg-rgb)/.18) 84%,transparent 100%);\n  --ds-task-shade:linear-gradient(90deg,rgb(var(--ds-bg-rgb)/.56) 0%,rgb(var(--ds-bg-rgb)/.36) 48%,rgb(var(--ds-bg-rgb)/.12) 100%);\n  --ds-task-fade:linear-gradient(180deg,rgb(var(--ds-bg-rgb)/.10) 0%,rgb(var(--ds-bg-rgb)/.18) 32%,rgb(var(--ds-bg-rgb)/.76) 68%,rgb(var(--ds-bg-rgb)/1) 100%);\n  --ds-immersive-edge:rgb(var(--ds-bg-rgb)/.40); --ds-immersive-mid:rgb(var(--ds-bg-rgb)/.26); --ds-immersive-far:rgb(var(--ds-bg-rgb)/.16);\n  --ds-immersive-sidebar:rgb(var(--ds-panel-rgb)/.46); --ds-task-immersive-sidebar:rgb(var(--ds-panel-rgb)/.70);\n  --ds-immersive-chrome:rgb(var(--ds-panel-rgb)/.28); --ds-immersive-composer:rgb(var(--ds-panel-rgb)/.44);\n  --ds-immersive-composer-solid:color-mix(in srgb,rgb(var(--ds-panel-2-rgb)) 88%,rgb(var(--ds-muted-rgb)) 12%);\n  --ds-immersive-line:rgb(var(--ds-muted-rgb)/.42);\n  --ds-task-immersive-edge:rgb(var(--ds-bg-rgb)/.82); --ds-task-immersive-mid:rgb(var(--ds-bg-rgb)/.74); --ds-task-immersive-far:rgb(var(--ds-bg-rgb)/.60);\n}\n/* Codex preset-gothic-void-crusade colors（金/米色） */\n:root{\n  color-scheme:dark;\n  --ds-bg:#0d0d0e; --ds-panel:#171513; --ds-panel-2:#211d18;\n  --ds-green:#c8a55a; --ds-lime:#e3c27a; --ds-cyan:#74352e; --ds-purple:#8a2f27;\n  --ds-text:#f3ead7; --ds-muted:#b5a386; --ds-line:rgba(200,165,90,.28);\n  --ds-bg-rgb:13 13 14; --ds-panel-rgb:23 21 19; --ds-panel-2-rgb:33 29 24;\n  --ds-text-rgb:243 234 215; --ds-muted-rgb:181 163 134;\n  --ds-accent-rgb:200 165 90; --ds-secondary-rgb:116 53 46; --ds-highlight-rgb:138 47 39;\n  --ds-accent:var(--ds-green); --ds-accent-soft:var(--ds-lime);\n  --ds-secondary:var(--ds-cyan); --ds-highlight:var(--ds-purple);\n  --ds-on-accent:rgb(var(--ds-bg-rgb)/1);\n}"
+    }
+  }
+]
 
 // --- style-editor.js ---
 /**
@@ -65,11 +336,11 @@ const STYLE_METADATA = {
 
 
 const TABS = [
-  { id: 'global', label: '全局' },
-  { id: 'topBar', label: '顶部栏' },
-  { id: 'leftSidebar', label: '左侧栏' },
-  { id: 'chatArea', label: '聊天区' },
-  { id: 'bottomBar', label: '底部栏' }
+  { id: 'global', label: 'Global' },
+  { id: 'topBar', label: 'Top Bar' },
+  { id: 'leftSidebar', label: 'Left Sidebar' },
+  { id: 'chatArea', label: 'Chat Area' },
+  { id: 'bottomBar', label: 'Bottom Bar' }
 ]
 
 /**
@@ -88,15 +359,19 @@ function generatePreviewCSS(draftStyles) {
   lines.push('}')
 
   lines.push('')
-  lines.push('/* Global Background */')
+  lines.push('/* Global Background (fixed full-screen layer) */')
   if (global?.background?.color) {
-    const color = global.background.color
-    // 颜色已内嵌 alpha（#RRGGBBAA）时直接使用；否则叠加 background.opacity
-    if (color.length >= 9) {
-      lines.push(`body { background-color: ${color}; }`)
+    const bg = global.background
+    const pct = Math.round(bg.opacity ?? 86)
+    if (bg.glass) {
+      lines.push(`/* Glass Mask: panels = ${bg.color} @ ${pct}% + blur */`)
+    }
+    if (bg.gradient) {
+      lines.push(`/* Gradient: ${bg.color} → darker */`)
+      lines.push(`background-layer: linear-gradient(135deg, ${bg.color}, <darker>);`)
     } else {
-      const opacity = ((global.background.opacity ?? 80) / 100).toFixed(2)
-      lines.push(`body { background-color: ${color}${Math.round(opacity * 255).toString(16).padStart(2, '0')}; }`)
+      const alpha = Math.round(((bg.opacity ?? 86) / 100) * 255).toString(16).padStart(2, '0')
+      lines.push(`background-layer: ${bg.color}${alpha};`)
     }
   }
 
@@ -142,7 +417,7 @@ function StyleEditor({ theme, onSave, onCancel, draftRef, isNew = false }) {
     JSON.parse(JSON.stringify(theme?.styles || DEFAULT_STYLES))
   )
 
-  // 将最新草稿暴露给外层（供面板顶部"保持"按钮读取并保存）
+  // 将最新草稿暴露给外层（供面板顶部"Keep"按钮读取并保存）
   React.useEffect(() => {
     if (draftRef) draftRef.current = draftStyles
   }, [draftStyles, draftRef])
@@ -229,13 +504,13 @@ function TabContent({ tabId, draftStyles, onChange, onToggleEnabled }) {
         className: 'w-4 h-4'
       }),
       React.createElement('label', { htmlFor: 'enable-custom', className: 'text-sm font-medium cursor-pointer' },
-        '启用该区域自定义样式'
+        'Enable custom styles for this area'
       )
     ),
 
     // 字体属性组
     React.createElement(PropertyGroup, {
-      title: '字体',
+      title: 'Font',
       category: 'font',
       config: config.font || {},
       metadata: STYLE_METADATA.font,
@@ -245,7 +520,7 @@ function TabContent({ tabId, draftStyles, onChange, onToggleEnabled }) {
 
     // 背景属性组
     React.createElement(PropertyGroup, {
-      title: '背景',
+      title: 'Background',
       category: 'background',
       config: config.background || {},
       metadata: STYLE_METADATA.background,
@@ -255,7 +530,7 @@ function TabContent({ tabId, draftStyles, onChange, onToggleEnabled }) {
 
     // 边框属性组
     React.createElement(PropertyGroup, {
-      title: '边框',
+      title: 'Border',
       category: 'border',
       config: config.border || {},
       metadata: STYLE_METADATA.border,
@@ -276,6 +551,23 @@ function PropertyGroup({ title, category, config, metadata, onChange, disabled }
     React.createElement('div', { className: 'space-y-3' },
       Object.entries(metadata).map(([key, meta]) => {
         const value = config[key] !== undefined ? config[key] : meta.default
+
+        // 复选框（如「启用渐变」「启用玻璃蒙板」）单独成行，标签在右侧
+        if (meta.type === 'checkbox') {
+          return React.createElement('label', {
+            key,
+            className: 'flex items-center gap-2 cursor-pointer select-none'
+          },
+            React.createElement('input', {
+              type: 'checkbox',
+              checked: !!value,
+              onChange: (e) => onChange(category, key, e.target.checked),
+              className: 'w-4 h-4'
+            }),
+            React.createElement('span', { className: 'text-xs text-gray-600' }, meta.label)
+          )
+        }
+
         return React.createElement('div', { key, className: 'flex items-center gap-3' },
           React.createElement('label', { className: 'w-24 text-xs text-gray-500 flex-shrink-0' }, meta.label),
           meta.type === 'color' && React.createElement(ColorPicker, {
@@ -313,7 +605,7 @@ function PropertyGroup({ title, category, config, metadata, onChange, disabled }
  */
 function CSSPreview({ css }) {
   return React.createElement('div', { className: 'space-y-2' },
-    React.createElement('h4', { className: 'font-medium text-sm text-gray-700' }, 'CSS 预览'),
+    React.createElement('h4', { className: 'font-medium text-sm text-gray-700' }, 'CSS Preview'),
     React.createElement('textarea', {
       readOnly: true,
       value: css,
@@ -436,7 +728,7 @@ function ColorPicker({ value, meta, onChange }) {
       onClick: handlePreviewClick,
       role: 'button',
       tabIndex: 0,
-      'aria-label': '选择颜色'
+      'aria-label': 'Select color'
     },
       React.createElement('div', { className: 'absolute inset-0', style: cpCheckerboard() }),
       React.createElement('div', {
@@ -463,7 +755,7 @@ function ColorPicker({ value, meta, onChange }) {
           value: parsed.hex,
           onChange: (e) => emit(e.target.value, hasOpacity ? parsed.alpha : 1),
           className: 'w-10 h-10 cursor-pointer bg-transparent border-0 p-0',
-          'aria-label': '颜色'
+          'aria-label': 'Color'
         }),
         React.createElement('input', {
           type: 'text',
@@ -477,7 +769,7 @@ function ColorPicker({ value, meta, onChange }) {
       // 透明度滑块（仅 hasOpacity 时显示，与颜色选择同时存在）
       hasOpacity && React.createElement('div', { className: 'space-y-1' },
         React.createElement('div', { className: 'flex items-center justify-between text-xs text-gray-500' },
-          React.createElement('span', null, '透明度'),
+          React.createElement('span', null, 'Opacity'),
           React.createElement('span', { className: 'font-mono' }, `${alphaPct}%`)
         ),
         React.createElement('div', { className: 'flex items-center gap-2' },
@@ -506,7 +798,7 @@ function ColorPicker({ value, meta, onChange }) {
         React.createElement('button', {
           className: 'px-3 py-1.5 rounded border border-(--ui-accent) bg-(--ui-accent) text-white hover:opacity-90 text-xs',
           onClick: () => setIsOpen(false)
-        }, '确定')
+        }, 'OK')
       )
     )
   )
@@ -525,12 +817,14 @@ function ColorPicker({ value, meta, onChange }) {
 
 const STORAGE_KEY = 'dream-skin:themes'
 const ACTIVE_THEME_KEY = 'dream-skin:active-theme'
+const GLOBAL_RULES_KEY = 'dream-skin:global-rules'
 
 class ThemeManager {
   constructor(ctx) {
     this.ctx = ctx
     this.themes = new Map()
     this.activeThemeId = null
+    this.globalRules = null
     this.listeners = new Set()
   }
 
@@ -547,6 +841,47 @@ class ThemeManager {
             theme.styles = JSON.parse(JSON.stringify(DEFAULT_STYLES))
           }
         }
+
+        // 升级 / 播种预设：preset-* id 始终跟踪「打包种子」里的细化配色（调色板）。
+        // 插件运行时只从 PluginStorage 取主题、不读 themes/*.json，
+        // 故直接改 themes/*.json 无效；种子已打进 bundle，此处落地到 storage。
+        // ⚠️ 关键修正：只同步「调色板」(customCSS) 来自种子，用户在预设上的 per-area /
+        // global 自定义（例如 leftSidebar 单独改字体颜色）必须保留——否则一旦插件重载，
+        // loadFromStorage 会把整个 styles 用种子覆盖，用户改动瞬间消失。
+        //    个人主题（theme-* id）不受影响。
+        for (const seed of PRESET_THEMES) {
+          const existing = this.themes.get(seed.id)
+          if (existing) {
+            // 保留用户/宿主侧元数据（名称、图片、art、description）
+            const seedAreas = seed.styles?.areas || {}
+            const userAreas = existing.styles?.areas || {}
+            const mergedAreas = {}
+            for (const key of new Set([...Object.keys(seedAreas), ...Object.keys(userAreas)])) {
+              mergedAreas[key] = { ...(seedAreas[key] || {}), ...(userAreas[key] || {}) }
+            }
+            existing.styles = {
+              ...existing.styles,
+              // 调色板跟随种子（保持最新细化配色）
+              customCSS: seed.styles?.customCSS || existing.styles?.customCSS,
+              // 全局 / 区域：种子默认值打底，用户自定义覆盖其上
+              global: {
+                ...(seed.styles?.global || {}),
+                ...(existing.styles?.global || {})
+              },
+              areas: mergedAreas
+            }
+          } else {
+            this.themes.set(seed.id, {
+              id: seed.id,
+              name: seed.name,
+              appearance: seed.appearance || 'auto',
+              art: seed.art,
+              image: seed.image || null,
+              styles: JSON.parse(JSON.stringify(seed.styles)),
+              createdAt: Date.now()
+            })
+          }
+        }
       }
     } catch (e) {
       console.warn('[Dream Skin] Failed to load themes from storage:', e)
@@ -557,6 +892,62 @@ class ThemeManager {
     } catch (e) {
       console.warn('[Dream Skin] Failed to load active theme:', e)
     }
+
+    // 全局规则：独立于主题，插件启动时即生效。storage 无则回退默认。
+    try {
+      const storedGlobal = this.ctx.storage.get(GLOBAL_RULES_KEY, null)
+      this.globalRules = storedGlobal || DEFAULT_GLOBAL_CSS
+    } catch (e) {
+      console.warn('[Dream Skin] Failed to load global rules:', e)
+      this.globalRules = DEFAULT_GLOBAL_CSS
+    }
+  }
+
+  /** 获取当前全局规则 CSS */
+  getGlobalRules() {
+    return this.globalRules || DEFAULT_GLOBAL_CSS
+  }
+
+  /** 设置并持久化全局规则 CSS */
+  setGlobalRules(css) {
+    this.globalRules = css || DEFAULT_GLOBAL_CSS
+    try {
+      this.ctx.storage.set(GLOBAL_RULES_KEY, this.globalRules)
+    } catch (e) {
+      console.warn('[Dream Skin] Failed to save global rules:', e)
+    }
+  }
+
+  /** 重新从 PluginStorage 加载主题（清空内存状态后重载） */
+  reloadFromStorage() {
+    this.themes = new Map()
+    this.activeThemeId = null
+    this.loadFromStorage()
+  }
+
+  /** 恢复系统默认状态：清空所有主题，仅保留种子预设并设为激活 */
+  restoreSystemDefaults() {
+    this.themes = new Map()
+    for (const seed of PRESET_THEMES) {
+      this.themes.set(seed.id, {
+        id: seed.id,
+        name: seed.name,
+        appearance: seed.appearance || 'auto',
+        art: seed.art,
+        image: seed.image || null,
+        styles: JSON.parse(JSON.stringify(seed.styles)),
+        createdAt: Date.now()
+      })
+    }
+    this.activeThemeId = this.themes.size ? PRESET_THEMES[0].id : null
+    // 全局规则一并重置为默认
+    this.globalRules = DEFAULT_GLOBAL_CSS
+    try {
+      this.ctx.storage.set(GLOBAL_RULES_KEY, DEFAULT_GLOBAL_CSS)
+    } catch (e) {
+      console.warn('[Dream Skin] Failed to save global rules:', e)
+    }
+    this.saveToStorage()
   }
 
   /** 保存主题配置到 PluginStorage */
@@ -710,18 +1101,21 @@ class ThemeManager {
 
 
 const STYLE_ID = 'hermes-dream-skin-style'
+const GLOBAL_ID = 'hermes-dream-skin-global'
 const CHROME_ID = 'hermes-dream-skin-chrome'
 
 class CSSInjector {
   constructor() {
     this.currentTheme = null
     this.styleEl = null
+    this.globalEl = null
     this.chromeEl = null
   }
 
   init() {
     // 初始化时检查是否有已注入的样式
     this.styleEl = document.getElementById(STYLE_ID)
+    this.globalEl = document.getElementById(GLOBAL_ID)
     this.chromeEl = document.getElementById(CHROME_ID)
   }
 
@@ -782,9 +1176,8 @@ class CSSInjector {
         --dream-skin-task-mode: ${taskMode};
       }
 
-      /* 主内容区背景 */
-      html.dream-skin-active main.main-surface,
-      html.dream-skin-active [role="main"] {
+      /* 主内容区背景（legacy 路径：无 styles 的旧主题） */
+      html.dream-skin-active [data-tree-group="grp-main"] {
         background-image: var(--dream-skin-art) !important;
         background-size: cover !important;
         background-position: ${Math.round(focusX * 100)}% ${Math.round(focusY * 100)}% !important;
@@ -793,26 +1186,25 @@ class CSSInjector {
       }
 
       /* 侧边栏半透明背景 */
-      html.dream-skin-active aside.app-shell-left-panel {
+      html.dream-skin-active [data-tree-group="grp-sessions"] {
         background: color-mix(in srgb, var(--ui-bg-sidebar) 85%, transparent) !important;
         backdrop-filter: blur(12px) saturate(1.05) !important;
       }
 
       /* 聊天区域半透明遮罩，确保文字可读性 */
-      html.dream-skin-active .thread-scroll-container,
-      html.dream-skin-active [data-testid="chat-container"] {
+      html.dream-skin-active [data-slot="aui_thread-viewport"] {
         background: color-mix(in srgb, var(--ui-bg-editor) 92%, transparent) !important;
       }
 
       /* 消息气泡增强可读性 */
-      html.dream-skin-active [data-message-author-role="user"] .message-content,
-      html.dream-skin-active [data-message-author-role="assistant"] .message-content {
+      html.dream-skin-active [data-role="user"],
+      html.dream-skin-active [data-slot="aui_assistant-message-root"] {
         background: color-mix(in srgb, var(--ui-bg-bubble) 95%, transparent) !important;
         backdrop-filter: blur(4px) !important;
       }
 
       /* Composer 区域半透明 */
-      html.dream-skin-active .composer-surface-chrome {
+      html.dream-skin-active [data-slot="composer-surface"] {
         background: color-mix(in srgb, var(--ui-bg-chrome) 90%, transparent) !important;
         backdrop-filter: blur(14px) saturate(1.06) !important;
       }
@@ -852,13 +1244,44 @@ class CSSInjector {
     }
     lines.push(`}`)
 
-    // 全局背景
-    if (styles.global?.background?.color) {
-      const bg = styles.global.background
-      const opacity = (bg.opacity ?? 80) / 100
-      lines.push(`html.dream-skin-active body {`)
-      lines.push(`  background-color: ${this.hexToRgba(bg.color, opacity)} !important;`)
+    // ── 主题背景（颜色 / 透明度 / 渐变 / 玻璃蒙板） ──
+    // 背景「底色」（纯色 / 渐变 / 背景图）由 injectChrome() 注入到固定的全屏背景层
+    // （与背景图同源，始终位于所有内容之后），面板在「玻璃蒙板」模式下对该层做半透明 + 模糊。
+    // 因此这里只负责「玻璃蒙板」下的面板半透明 + 模糊处理；纯色 / 渐变底色见 injectChrome。
+    // 玻璃与渐变相互独立：渐变控制底色层，玻璃控制面板处理，两者可同时开启。
+    const bg = styles.global?.background
+    if (bg && bg.color && bg.glass) {
+      const bgOpacity = (bg.opacity ?? 86) / 100
+      const bgColor = bg.color
+      const panelBg = `color-mix(in srgb, ${bgColor} ${Math.round(bgOpacity * 100)}%, transparent)`
+
+      // 玻璃蒙板：面板半透明 + 模糊，露出底层固定背景层（纯色 / 渐变 / 背景图）
+      lines.push(`/* glass mask */`)
+      lines.push(`html.dream-skin-active [data-tree-group="grp-sessions"] {`)
+      lines.push(`  background: ${panelBg} !important;`)
+      lines.push(`  border-color: var(--ds-line) !important;`)
+      lines.push(`  backdrop-filter: blur(12px) saturate(1.05) !important;`)
       lines.push(`}`)
+      lines.push(`html.dream-skin-active [data-tree-group="grp-sessions"] nav { background: transparent !important; }`)
+      lines.push(`html.dream-skin-active [data-tree-group="grp-sessions"] button:hover { background: color-mix(in srgb, var(--ds-accent) 18%, transparent) !important; }`)
+      lines.push(`html.dream-skin-active [data-tree-group="grp-sessions"] [aria-current="page"] { color: var(--ds-text) !important; background: color-mix(in srgb, var(--ds-accent) 24%, transparent) !important; box-shadow: inset 0 0 0 1px var(--ds-line) !important; }`)
+      lines.push(`html.dream-skin-active [data-tree-group="grp-main"] {`)
+      lines.push(`  background: ${panelBg} !important;`)
+      lines.push(`}`)
+      lines.push(`html.dream-skin-active [data-role="user"], html.dream-skin-active [data-slot="aui_assistant-message-root"] {`)
+      lines.push(`  background: ${panelBg} !important;`)
+      lines.push(`  backdrop-filter: blur(4px) !important;`)
+      lines.push(`}`)
+      lines.push(`html.dream-skin-active [data-slot="composer-surface"] {`)
+      lines.push(`  background: ${panelBg} !important;`)
+      lines.push(`  border: 1px solid var(--ds-line) !important;`)
+      lines.push(`  border-radius: 18px !important;`)
+      lines.push(`  box-shadow: 0 12px 34px color-mix(in srgb, var(--ds-accent) 8%, transparent) !important;`)
+      lines.push(`  backdrop-filter: blur(14px) saturate(1.06) !important;`)
+      lines.push(`}`)
+      lines.push(`html.dream-skin-active [data-slot="statusbar"] { background: ${panelBg} !important; }`)
+      lines.push(`html.dream-skin-active .dream-home>div:first-child>div:first-child>div:first-child { border: 1px solid var(--ds-line) !important; border-radius: 20px !important; box-shadow: 0 18px 48px color-mix(in srgb, var(--ds-accent) 9%, transparent) !important; }`)
+      lines.push(`html.dream-skin-active .dream-home>div:first-child>div:first-child>div:first-child::before { background: radial-gradient(ellipse at center, color-mix(in srgb, var(--ds-panel) 92%, transparent) 0 23%, transparent 72%); }`)
     }
 
     // 全局字体
@@ -889,18 +1312,10 @@ class CSSInjector {
       lines.push(`}`)
     }
 
-    // 背景图（主内容区）
-    lines.push(`/* 主内容区背景 */`)
-    lines.push(`html.dream-skin-active main.main-surface,`)
-    lines.push(`html.dream-skin-active [role="main"] {`)
-    if (image) {
-      lines.push(`  background-image: var(--dream-skin-art) !important;`)
-      lines.push(`  background-size: cover !important;`)
-      lines.push(`  background-position: ${Math.round(focusX * 100)}% ${Math.round(focusY * 100)}% !important;`)
-      lines.push(`  background-repeat: no-repeat !important;`)
-      lines.push(`  background-attachment: fixed !important;`)
-    }
-    lines.push(`}`)
+    // 背景图说明：实际背景图由 injectChrome() 以「固定背景层」注入（docs 的
+    // Fixed Background Div Technique）。主内容区的背景由上方「主题背景」生成
+    // （玻璃蒙板 / 渐变 / 纯色）决定；非上述情况时全局规则已将其中性化为透明。
+    // 因此这里不再对主内容区硬编码 background，避免覆盖主题的背景设置。
 
     // 各区域样式
     for (const [area, config] of Object.entries(styles.areas || {})) {
@@ -909,38 +1324,45 @@ class CSSInjector {
       const selector = AREA_SELECTORS[area]
       if (!selector) continue
 
-      lines.push(`/* ${area} */`)
-      lines.push(`html.dream-skin-active ${selector} {`)
-
-      // 字体
-      if (config.font?.color) {
-        lines.push(`  color: ${config.font.color} !important;`)
-      }
-      if (config.font?.size) {
-        lines.push(`  font-size: ${config.font.size}px !important;`)
-      }
-      if (config.font?.family) {
-        lines.push(`  font-family: '${config.font.family}' !important;`)
-      }
-
-      // 背景
+      // 区分两类声明：
+      //  - fontDecls（字体类：color / size / family）：应「下放到子元素」，因为可见文字多在
+      //    后代节点（按钮、[aria-current="page"]、nav 等），且全局规则对子元素有更高特异性的
+      //    !important 着色，仅改根元素颜色会被覆盖、看不到效果。
+      //  - boxDecls（容器类：background / border / radius）：只作用于区域容器本身，不要糊到每个子节点。
+      const fontDecls = []
+      const boxDecls = []
+      if (config.font?.color) fontDecls.push(`color: ${config.font.color} !important;`)
+      if (config.font?.size) fontDecls.push(`font-size: ${config.font.size}px !important;`)
+      if (config.font?.family) fontDecls.push(`font-family: '${config.font.family}' !important;`)
       if (config.background?.color) {
         const bg = config.background
         const opacity = (bg.opacity ?? 80) / 100
-        lines.push(`  background-color: ${this.hexToRgba(bg.color, opacity)} !important;`)
+        boxDecls.push(`background-color: ${this.hexToRgba(bg.color, opacity)} !important;`)
       }
-
-      // 边框
       if (config.border?.color || config.border?.width !== undefined) {
         const borderColor = config.border.color || '#000000'
         const borderWidth = config.border.width ?? 0
-        lines.push(`  border: ${borderWidth}px solid ${borderColor} !important;`)
+        boxDecls.push(`border: ${borderWidth}px solid ${borderColor} !important;`)
       }
       if (config.border?.radius !== undefined) {
-        lines.push(`  border-radius: ${config.border.radius}px !important;`)
+        boxDecls.push(`border-radius: ${config.border.radius}px !important;`)
       }
 
+      lines.push(`/* ${area} */`)
+      // 根元素：字体 + 容器样式
+      lines.push(`html.dream-skin-active ${selector} {`)
+      if (fontDecls.length) lines.push(`  ${fontDecls.join(' ')}`)
+      if (boxDecls.length) lines.push(`  ${boxDecls.join(' ')}`)
       lines.push(`}`)
+
+      // 字体类下放到所有后代元素。用 html.dream-skin-active.dream-skin-active 重复类把特异性
+      // 从 (0,2,1) 抬到 (0,3,1)，正好压过全局对子元素（如 [aria-current="page"]）的 !important 着色；
+      // 主题样式表在全局之后注入，同特异性时后者胜出。
+      if (fontDecls.length) {
+        lines.push(`html.dream-skin-active.dream-skin-active ${selector} * {`)
+        lines.push(`  ${fontDecls.join(' ')}`)
+        lines.push(`}`)
+      }
     }
 
     // 自定义 CSS（最高优先级）
@@ -973,6 +1395,23 @@ class CSSInjector {
   }
 
   /**
+   * 将 hex 颜色按比例加深（factor=0.4 表示变暗 40%）
+   * 用于「渐变背景」生成深一档的终止色。
+   */
+  darkenHex(hex, factor = 0.3) {
+    const clean = (hex || '').replace('#', '').slice(0, 6)
+    const r = parseInt(clean.substring(0, 2) || '0', 16)
+    const g = parseInt(clean.substring(2, 4) || '0', 16)
+    const b = parseInt(clean.substring(4, 6) || '0', 16)
+    const f = 1 - factor
+    const nr = Math.round(r * f)
+    const ng = Math.round(g * f)
+    const nb = Math.round(b * f)
+    const toHex = (n) => n.toString(16).padStart(2, '0')
+    return `#${toHex(nr)}${toHex(ng)}${toHex(nb)}`
+  }
+
+  /**
    * 注入样式标签
    */
   injectStyle(css) {
@@ -993,12 +1432,86 @@ class CSSInjector {
   }
 
   /**
-   * 注入 Chrome 层（用于背景图覆盖和特效）
+   * 注入「全局规则」（与主题解耦的共享元素级覆盖）
+   *
+   * 写入独立的 <style id="hermes-dream-skin-global">，独立于主题切换：
+   * 插件启动时调用一次即可长期生效；用户在面板中修改后再次调用本方法即时重注入。
+   * 这些规则均以 html.dream-skin-active 为前缀，主题未应用时不会生效。
+   */
+  applyGlobalCSS(css) {
+    if (!css) return
+    if (this.globalEl) {
+      this.globalEl.textContent = css
+      return
+    }
+    this.globalEl = document.createElement('style')
+    this.globalEl.id = GLOBAL_ID
+    this.globalEl.textContent = css
+    document.head.appendChild(this.globalEl)
+  }
+
+  /** 移除全局规则样式标签 */
+  removeGlobal() {
+    if (this.globalEl) {
+      this.globalEl.remove()
+      this.globalEl = null
+    }
+  }
+
+  /**
+   * 注入固定背景层（全屏底色 / 背景图 / 渐变）
+   *
+   * 采用 docs/hermes-desktop-plugin-dev 的「Fixed Background Div Technique」：
+   * 作为 body.firstChild 插入，不设 z-index / 不设 opacity:0 —— 否则背景会
+   * 被放到页面之后或完全不可见（见文档 pitfalls：z-index:-1 / opacity:0 均为坑）。
+   *
+   * 底色优先级：背景图 > 渐变 > 纯色；无背景色且无图则不创建层（完全透明）。
+   * 这一层是主题「玻璃蒙板」要模糊 / 透出的对象，也承载渐变与纯色背景本身，
+   * 因此无论主题是否带图都会创建，确保渐变 / 纯色 / 玻璃效果真正可见
+   * （不再依赖被宿主根容器遮盖的 body 背景）。
    */
   injectChrome(theme) {
     if (this.chromeEl) {
       this.chromeEl.remove()
+      this.chromeEl = null
     }
+
+    const bg = theme?.styles?.global?.background
+
+    // 背景图优先：保留原有 cover + focus 定位行为
+    if (theme && theme.image) {
+      const art = theme.art || {}
+      const fx = Math.round((art.focusX ?? 0.5) * 100)
+      const fy = Math.round((art.focusY ?? 0.35) * 100)
+      this.chromeEl = document.createElement('div')
+      this.chromeEl.id = CHROME_ID
+      this.chromeEl.setAttribute('aria-hidden', 'true')
+      this.chromeEl.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        pointer-events: none;
+        background-image: url("${theme.image}");
+        background-size: cover;
+        background-position: ${fx}% ${fy}%;
+        background-repeat: no-repeat;
+      `
+      document.body.insertBefore(this.chromeEl, document.body.firstChild)
+      return
+    }
+
+    // 渐变 / 纯色底色
+    let paint = null
+    if (bg && bg.color) {
+      if (bg.gradient) {
+        paint = `linear-gradient(135deg, ${bg.color} 0%, ${this.darkenHex(bg.color, 0.4)} 100%)`
+      } else {
+        paint = this.hexToRgba(bg.color, (bg.opacity ?? 86) / 100)
+      }
+    }
+    if (!paint) return
 
     this.chromeEl = document.createElement('div')
     this.chromeEl.id = CHROME_ID
@@ -1007,14 +1520,14 @@ class CSSInjector {
       position: fixed;
       top: 0;
       left: 0;
-      width: 100%;
-      height: 100%;
+      width: 100vw;
+      height: 100vh;
       pointer-events: none;
-      z-index: -1;
-      opacity: 0;
+      background: ${paint};
     `
 
-    document.body.appendChild(this.chromeEl)
+    // 插入到 body 第一个子节点之前 → 自然位于所有内容之后（无需 z-index）
+    document.body.insertBefore(this.chromeEl, document.body.firstChild)
   }
 
   /**
@@ -1040,6 +1553,7 @@ class CSSInjector {
    */
   dispose() {
     this.removeTheme()
+    this.removeGlobal()
   }
 }
 
@@ -1073,8 +1587,12 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
   const [newStyles, setNewStyles] = React.useState(null)
   // 编辑视图中待保存的新背景图
   const [editFile, setEditFile] = React.useState(null)
-  // 保存 StyleEditor 当前草稿，供顶部"保持"按钮读取
+  // 保存 StyleEditor 当前草稿，供顶部"Keep"按钮读取
   const draftRef = React.useRef(null)
+
+  // 全局规则弹框状态
+  const [showGlobalDialog, setShowGlobalDialog] = React.useState(false)
+  const [globalDraft, setGlobalDraft] = React.useState('')
 
   // 刷新主题列表
   const refreshThemes = React.useCallback(() => {
@@ -1175,6 +1693,36 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
     refreshThemes()
   }
 
+  // 重新加载：从 PluginStorage 重新读取主题并重新应用当前激活主题
+  const handleReload = () => {
+    try {
+      themeManager.reloadFromStorage()
+      const active = themeManager.getActiveTheme()
+      if (active) cssInjector.applyTheme(active)
+      refreshThemes()
+    } catch (e) {
+      console.error('[Dream Skin] Failed to reload:', e)
+    }
+  }
+
+  // 恢复系统默认状态：清空自定义主题，仅保留系统预设
+  const handleRestoreDefaults = () => {
+    if (!confirm('Restore system default themes? This will remove all custom themes.')) {
+      return
+    }
+    try {
+      themeManager.restoreSystemDefaults()
+      const active = themeManager.getActiveTheme()
+      if (active) cssInjector.applyTheme(active)
+      // 全局规则一并重置为默认并即时重注入
+      cssInjector.applyGlobalCSS(themeManager.getGlobalRules())
+      setView('list')
+      refreshThemes()
+    } catch (e) {
+      console.error('[Dream Skin] Failed to restore defaults:', e)
+    }
+  }
+
   // 删除主题
   const handleRemoveTheme = (themeId) => {
     if (!confirm('Are you sure you want to delete this theme?')) {
@@ -1185,17 +1733,132 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
     refreshThemes()
   }
 
+  // 打开「全局规则」弹框：载入当前全局规则到草稿
+  const handleOpenGlobal = () => {
+    setGlobalDraft(themeManager.getGlobalRules())
+    setShowGlobalDialog(true)
+  }
+
+  // 保存全局规则：持久化并即时重注入
+  const handleSaveGlobal = () => {
+    try {
+      themeManager.setGlobalRules(globalDraft)
+      cssInjector.applyGlobalCSS(globalDraft)
+      setShowGlobalDialog(false)
+    } catch (e) {
+      console.error('[Dream Skin] Failed to save global rules:', e)
+    }
+  }
+
+  // 全局规则重置为默认
+  const handleResetGlobal = () => {
+    setGlobalDraft(DEFAULT_GLOBAL_CSS)
+  }
+
   return React.createElement('div', { className: 'p-4 space-y-4' },
-    // 标题（列表视图显示）
-    view === 'list' && React.createElement('h2', { className: 'text-lg font-semibold' }, 'Dream Skin'),
+    // 标题 + 操作按钮（同一行：标题在左，按钮在右）
+    view === 'list' && React.createElement('div', { className: 'flex items-center justify-between mb-3' },
+      React.createElement('h2', { className: 'text-lg font-semibold' }, 'Dream Skin'),
+      React.createElement('div', { className: 'flex items-center gap-2' },
+        React.createElement(Button, {
+          onClick: handleStartAdd,
+          className: 'text-sm'
+        }, 'Add Theme'),
+        React.createElement(Button, {
+          onClick: handleReload,
+          className: 'text-sm',
+          title: 'Reload themes from storage and re-apply the active theme'
+        }, 'Reload'),
+        React.createElement(Button, {
+          onClick: handleRestoreDefaults,
+          className: 'text-sm',
+          title: 'Remove all custom themes and restore system default presets'
+        }, 'Restore Defaults'),
+        React.createElement(Button, {
+          onClick: handleOpenGlobal,
+          className: 'text-sm',
+          title: 'View and edit global rules applied on plugin startup (shared across all themes)'
+        }, 'Global Rules')
+      )
+    ),
+
+    // 全局规则弹框（模态）：查看 / 修改
+    showGlobalDialog && React.createElement('div', {
+      style: {
+        position: 'fixed', inset: 0, zIndex: 9999,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'rgba(0,0,0,.55)', padding: 16
+      },
+      onClick: (e) => { if (e.target === e.currentTarget) setShowGlobalDialog(false) }
+    },
+      React.createElement('div', {
+        style: {
+          width: 'min(720px, 94vw)', maxHeight: '86vh',
+          display: 'flex', flexDirection: 'column',
+          background: 'var(--ds-panel, #191c22)', color: 'var(--ds-text, #edf0f1)',
+          border: '1px solid var(--ds-line, rgba(130,152,163,.24))',
+          borderRadius: 14, boxShadow: '0 24px 64px rgba(0,0,0,.5)', overflow: 'hidden'
+        }
+      },
+        // 标题栏
+        React.createElement('div', {
+          style: {
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '14px 18px', borderBottom: '1px solid var(--ds-line, rgba(130,152,163,.24))'
+          }
+        },
+          React.createElement('h3', { style: { fontSize: 16, fontWeight: 600 } }, 'Global Rules'),
+          React.createElement('button', {
+            onClick: () => setShowGlobalDialog(false),
+            title: 'Close',
+            style: {
+              width: 30, height: 30, borderRadius: 8, border: '1px solid transparent',
+              background: 'transparent', color: 'var(--ds-muted, #a3aaae)',
+              cursor: 'pointer', fontSize: 18, lineHeight: 1
+            }
+          }, '×')
+        ),
+        // 说明 + 编辑区
+        React.createElement('div', { style: { padding: '16px 18px', flex: 1, overflow: 'auto' } },
+          React.createElement('p', {
+            style: { fontSize: 12, color: 'var(--ds-muted, #a3aaae)', marginBottom: 10, lineHeight: 1.5 }
+          }, 'These rules are applied on plugin startup and require a theme to be active. They are shared across all themes and are not stored per-theme.'),
+          React.createElement('textarea', {
+            value: globalDraft,
+            onChange: (e) => setGlobalDraft(e.target.value),
+            spellCheck: false,
+            style: {
+              width: '100%', height: '46vh', resize: 'none',
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+              fontSize: 12, lineHeight: 1.55, color: '#9ae6b4', background: '#0c0f14',
+              border: '1px solid var(--ds-line, rgba(130,152,163,.24))',
+              borderRadius: 8, padding: 12
+            }
+          })
+        ),
+        // 底部按钮
+        React.createElement('div', {
+          style: {
+            display: 'flex', gap: 8, justifyContent: 'flex-end',
+            padding: '12px 18px', borderTop: '1px solid var(--ds-line, rgba(130,152,163,.24))'
+          }
+        },
+          React.createElement(Button, {
+            onClick: handleResetGlobal, className: 'text-sm',
+            title: 'Reset global rules to default'
+          }, 'Reset'),
+          React.createElement(Button, {
+            onClick: () => setShowGlobalDialog(false), className: 'text-sm'
+          }, 'Cancel'),
+          React.createElement(Button, {
+            onClick: handleSaveGlobal, className: 'text-sm'
+          }, 'Save')
+        )
+      )
+    ),
 
     // 列表视图
     view === 'list' && React.createElement(React.Fragment, null,
-      // 添加主题按钮
-      React.createElement(Button, {
-        onClick: handleStartAdd,
-        className: 'w-full'
-      }, 'Add Theme'),
 
       // 主题列表
       React.createElement(ScrollArea, { className: 'h-[calc(100vh-180px)]' },
@@ -1209,7 +1872,7 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
                   key: theme.id,
                   theme,
                   isActive: activeTheme?.id === theme.id,
-                  onSwitch: () => handleSwitchTheme(theme.id),
+                  onActivate: () => handleSwitchTheme(theme.id),
                   onRemove: () => handleRemoveTheme(theme.id),
                   onEdit: () => handleStartEdit(theme)
                 })
@@ -1227,11 +1890,11 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
           React.createElement('button', {
             onClick: () => handleSaveNewTheme(draftRef.current),
             className: 'px-3 py-1.5 rounded border border-(--ui-accent) bg-(--ui-accent) text-white hover:opacity-90 text-sm'
-          }, '保持'),
+          }, 'Keep'),
           React.createElement('button', {
             onClick: () => { setNewThemeName(''); setSelectedFile(null); setView('list') },
             className: 'px-3 py-1.5 rounded border border-(--ui-stroke-secondary) text-(--ui-text-secondary) hover:bg-(--chrome-action-hover) text-sm'
-          }, '取消')
+          }, 'Cancel')
         )
       ),
 
@@ -1269,11 +1932,11 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
           React.createElement('button', {
             onClick: () => handleSaveEdit(draftRef.current),
             className: 'px-3 py-1.5 rounded border border-(--ui-accent) bg-(--ui-accent) text-white hover:opacity-90 text-sm'
-          }, '保持'),
+          }, 'Keep'),
           React.createElement('button', {
             onClick: () => { setView('list'); setEditingTheme(null); setEditFile(null) },
             className: 'px-3 py-1.5 rounded border border-(--ui-stroke-secondary) text-(--ui-text-secondary) hover:bg-(--chrome-action-hover) text-sm'
-          }, '取消')
+          }, 'Cancel')
         )
       ),
 
@@ -1349,13 +2012,13 @@ function BackgroundImageField({ label, initialPreview, onFile }) {
       preview
         ? React.createElement('img', {
             src: preview,
-            alt: '背景预览',
+            alt: 'Background preview',
             className: 'w-full h-32 object-cover rounded-lg pointer-events-none'
           })
         : React.createElement(React.Fragment, null,
             React.createElement('div', { className: 'text-3xl text-gray-400' }, '⬆'),
-            React.createElement('div', { className: 'text-sm text-gray-600' }, '拖放图片到此处，或点击选择'),
-            React.createElement('div', { className: 'text-xs text-gray-400' }, '推荐 2560×1440 或更高')
+            React.createElement('div', { className: 'text-sm text-gray-600' }, 'Drag an image here, or click to select'),
+            React.createElement('div', { className: 'text-xs text-gray-400' }, 'Recommended 2560×1440 or higher')
           ),
       React.createElement('input', {
         id: inputId,
@@ -1370,38 +2033,51 @@ function BackgroundImageField({ label, initialPreview, onFile }) {
 
 /**
  * 主题卡片组件
- * 选中态以边框颜色区分，不显示"Active"文本
+ * 选中态以边框颜色区分；列表上的按钮统一蓝色背景；「Activate」按钮点击后才正式应用主题。
  */
-function ThemeCard({ theme, isActive, onSwitch, onRemove, onEdit }) {
-  // 激活主题禁止修改/删除：编辑与删除按钮禁用
-  const actionBase = 'px-1.5 py-0.5 rounded border transition-colors'
-  const actionEnabled = 'text-(--ui-text-tertiary) border-(--ui-stroke-secondary)'
-  const actionDisabled = 'opacity-50 cursor-not-allowed text-(--ui-text-tertiary) border-(--ui-stroke-secondary)'
+function ThemeCard({ theme, isActive, onActivate, onRemove, onEdit }) {
+  // 列表按钮统一蓝色背景（宿主主题变量 --ui-accent）
+  const blueBtn = 'px-2 py-0.5 rounded text-xs transition-colors'
+  const blueStyle = {
+    background: 'var(--ui-accent)',
+    border: '1px solid var(--ui-accent)',
+    color: '#fff'
+  }
+  const blueStyleDisabled = { ...blueStyle, opacity: 0.5, cursor: 'not-allowed' }
 
   return React.createElement('div', {
-    className: `relative p-3 rounded-lg border-2 cursor-pointer transition-all ${
+    className: `relative p-3 rounded-lg border-2 transition-all ${
       isActive ? 'border-(--ui-accent)' : 'border-(--ui-stroke-secondary) hover:border-(--ui-text-tertiary)'
     }`,
-    onClick: onSwitch,
-    title: isActive ? '当前激活主题（不可编辑/删除）' : '点击应用此主题'
+    title: isActive ? 'Active theme' : 'Use "Activate" to apply this theme'
   },
-    // 顶部：主题名 + 文字操作按钮
+    // 顶部：主题名 + 操作按钮（蓝色背景）
     React.createElement('div', { className: 'flex items-center justify-between mb-2' },
       React.createElement('h3', { className: 'font-medium text-sm' }, theme.name),
       React.createElement('div', { className: 'flex gap-1' },
+        // 激活按钮（图标，点击才正式应用主题）
+        React.createElement('button', {
+          disabled: isActive,
+          onClick: (e) => { e.stopPropagation(); if (!isActive) onActivate() },
+          style: isActive ? blueStyleDisabled : blueStyle,
+          className: blueBtn,
+          title: isActive ? 'This theme is active' : 'Activate this theme'
+        }, isActive ? '✓' : '✓'),
         // 编辑按钮
         React.createElement('button', {
           disabled: isActive,
           onClick: (e) => { e.stopPropagation(); if (!isActive) onEdit() },
-          className: `${actionBase} ${isActive ? actionDisabled : actionEnabled + ' hover:text-(--ui-accent) hover:border-(--ui-accent)'}`,
-          title: isActive ? '激活主题不可编辑' : 'Edit Styles'
+          style: isActive ? blueStyleDisabled : blueStyle,
+          className: blueBtn,
+          title: isActive ? 'Active theme cannot be edited' : 'Edit Styles'
         }, '✎'),
         // 删除按钮
         React.createElement('button', {
           disabled: isActive,
           onClick: (e) => { e.stopPropagation(); if (!isActive) onRemove() },
-          className: `${actionBase} ${isActive ? actionDisabled : actionEnabled + ' hover:text-(--ui-text-primary) hover:border-(--ui-text-primary)'}`,
-          title: isActive ? '激活主题不可删除' : 'Delete Theme'
+          style: isActive ? blueStyleDisabled : blueStyle,
+          className: blueBtn,
+          title: isActive ? 'Active theme cannot be deleted' : 'Delete Theme'
         }, '×')
       )
     ),
@@ -1441,7 +2117,11 @@ class DreamSkinPlugin {
     // 2. 加载持久化的主题配置
     this.themeManager.loadFromStorage()
 
-    // 3. 如果有激活的主题，立即应用
+    // 3. 注入全局规则（与主题解耦的共享元素级覆盖）：插件启动即生效，
+    //    仅在主题激活（html.dream-skin-active）时显示。后续主题切换不影响它。
+    this.cssInjector.applyGlobalCSS(this.themeManager.getGlobalRules())
+
+    // 4. 如果有激活的主题，立即应用
     const activeTheme = this.themeManager.getActiveTheme()
     if (activeTheme) {
       this.cssInjector.applyTheme(activeTheme)
