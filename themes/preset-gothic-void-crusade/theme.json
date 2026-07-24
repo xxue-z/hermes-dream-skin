@@ -21,12 +21,14 @@
         "color": "#171513",
         "opacity": 86,
         "gradient": true,
-        "glass": true,
+        "glass": false,
         "colors": [
           "#c99ce8a3",
           "#3f503a8c",
           "#2958bcdb"
-        ]
+        ],
+        "gradientOpacity": 100,
+        "layerOpacity": 30
       },
       "border": {
         "color": "#8298a3",

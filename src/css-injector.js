@@ -430,7 +430,22 @@ export class CSSInjector {
         ? bg.colors
         : (bg.color ? [bg.color, this.darkenHex(bg.color, 0.4)] : null)
       if (gradColors && gradColors.length >= 1) {
-        this._mountChromeLayer(`linear-gradient(135deg, ${gradColors.join(', ')})`)
+        // 整体渐变透明度：把每个颜色的内嵌 alpha 再乘以 gradientOpacity 系数
+        const gOp = (bg.gradientOpacity ?? 100) / 100
+        const stops = gradColors.map((c) => {
+          const clean = (c || '').replace('#', '')
+          if (clean.length >= 8) {
+            const base = '#' + clean.slice(0, 6)
+            const a = (parseInt(clean.slice(6, 8), 16) / 255) * gOp
+            const ah = Math.round(Math.max(0, Math.min(1, a)) * 255).toString(16).padStart(2, '0')
+            return `${base}${ah}`
+          }
+          const ah = Math.round(Math.max(0, Math.min(1, gOp)) * 255).toString(16).padStart(2, '0')
+          return `${c}${ah}`
+        })
+        // 整层背景透明度：直接作用于 chrome 容器（与每个颜色 alpha 独立）
+        const layerOp = (bg.layerOpacity ?? 100) / 100
+        this._mountChromeLayer(`linear-gradient(135deg, ${stops.join(', ')})`, layerOp)
         return
       }
     }
@@ -454,6 +469,7 @@ export class CSSInjector {
         background-size: cover;
         background-position: ${fx}% ${fy}%;
         background-repeat: no-repeat;
+        opacity: ${(bg?.layerOpacity ?? 100) / 100};
       `
       document.body.insertBefore(this.chromeEl, document.body.firstChild)
       return
@@ -465,8 +481,8 @@ export class CSSInjector {
     this._mountChromeLayer(paint)
   }
 
-  /** 挂载固定全屏底色层（渐变 / 纯色通用） */
-  _mountChromeLayer(paint) {
+  /** 挂载固定全屏底色层（渐变 / 纯色通用），layerOpacity 控制整层透明度 */
+  _mountChromeLayer(paint, layerOpacity = 1) {
     this.chromeEl = document.createElement('div')
     this.chromeEl.id = CHROME_ID
     this.chromeEl.setAttribute('aria-hidden', 'true')
@@ -478,6 +494,7 @@ export class CSSInjector {
       height: 100vh;
       pointer-events: none;
       background: ${paint};
+      opacity: ${layerOpacity};
     `
     // 插入到 body 第一个子节点之前 → 自然位于所有内容之后（无需 z-index）
     document.body.insertBefore(this.chromeEl, document.body.firstChild)
