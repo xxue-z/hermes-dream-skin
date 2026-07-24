@@ -10,21 +10,17 @@
     "safeArea": "center",
     "taskMode": "ambient"
   },
-  "palette": {
-    "accent": "#E25563",
-    "accentInk": "#1a1416"
-  },
   "styles": {
     "global": {
       "font": {
         "family": "\"Segoe UI Variable Text\", \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
         "size": 14,
-        "color": "#edf0f1"
+        "color": "#6e7172f5"
       },
       "background": {
         "color": "#241b1e",
         "opacity": 86,
-        "gradient": false,
+        "gradient": true,
         "glass": true
       },
       "border": {

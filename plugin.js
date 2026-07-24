@@ -1,6 +1,6 @@
 /**
  * Hermes Dream Skin Plugin
- * Generated at: 2026-07-24T03:50:59.459Z
+ * Generated at: 2026-07-24T05:09:05.990Z
  */
 
 import React from 'react'
@@ -1330,18 +1330,28 @@ class CSSInjector {
     }
 
     // 全局字体
-    if (styles.global?.font?.family || styles.global?.font?.size || styles.global?.font?.color) {
-      lines.push(`html.dream-skin-active {`)
-      if (styles.global.font.family) {
-        lines.push(`  font-family: '${styles.global.font.family}' !important;`)
+    const globalFont = styles.global?.font
+    if (globalFont?.family || globalFont?.size || globalFont?.color) {
+      const rootDecls = []
+      if (globalFont.family) rootDecls.push(`font-family: '${globalFont.family}' !important;`)
+      if (globalFont.size) rootDecls.push(`font-size: ${globalFont.size}px !important;`)
+      if (globalFont.color) rootDecls.push(`color: ${globalFont.color} !important;`)
+      // 根元素：字体家族 / 字号靠继承即可（图标元素的字体 class 会正常覆盖继承值）
+      if (rootDecls.length) {
+        lines.push(`html.dream-skin-active {`)
+        lines.push(`  ${rootDecls.join(' ')}`)
+        lines.push(`}`)
       }
-      if (styles.global.font.size) {
-        lines.push(`  font-size: ${styles.global.font.size}px !important;`)
+      // 仅把「颜色」下放到所有后代：可见文字多在子节点且多有自身 color 声明，
+      // 仅改根元素颜色会被继承覆盖、看不到效果；用重复类把特异性抬到 (0,3,1)，
+      // 压过默认全局规则对子元素的着色；区域专属规则特异性更高(0,3,2)，仍优先。
+      // 注意：字体家族 / 字号【不】下放到 *，否则 !important 的 * 选择器会覆盖图标
+      // 字体的 class 声明，导致图标渲染成缺失字形（变成“叉”）。
+      if (globalFont.color) {
+        lines.push(`html.dream-skin-active.dream-skin-active * {`)
+        lines.push(`  color: ${globalFont.color} !important;`)
+        lines.push(`}`)
       }
-      if (styles.global.font.color) {
-        lines.push(`  color: ${styles.global.font.color} !important;`)
-      }
-      lines.push(`}`)
     }
 
     // 全局边框
@@ -1400,12 +1410,16 @@ class CSSInjector {
       if (boxDecls.length) lines.push(`  ${boxDecls.join(' ')}`)
       lines.push(`}`)
 
-      // 字体类下放到所有后代元素。用 html.dream-skin-active.dream-skin-active 重复类把特异性
-      // 从 (0,2,1) 抬到 (0,3,1)，正好压过全局对子元素（如 [aria-current="page"]）的 !important 着色；
+      // 仅「颜色」下放到所有后代元素（字体家族 / 字号靠继承）。
+      // 用 html.dream-skin-active.dream-skin-active 重复类把特异性从 (0,2,1) 抬到 (0,3,1)，
+      // 正好压过全局对子元素（如 [aria-current="page"]）的 !important 着色；
       // 主题样式表在全局之后注入，同特异性时后者胜出。
-      if (fontDecls.length) {
+      // 不放字体家族：否则 !important 的 * 选择器会覆盖图标字体的 class 声明，
+      // 导致该区域图标渲染成缺失字形（变成“叉”）。
+      const areaColorDecl = config.font?.color ? `color: ${config.font.color} !important;` : ''
+      if (areaColorDecl) {
         lines.push(`html.dream-skin-active.dream-skin-active ${selector} * {`)
-        lines.push(`  ${fontDecls.join(' ')}`)
+        lines.push(`  ${areaColorDecl}`)
         lines.push(`}`)
       }
     }
