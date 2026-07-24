@@ -1,0 +1,11 @@
+html.dream-skin-active{color:var(--ds-text)!important;}
+html.dream-skin-active [data-tree-group="grp-sessions"]{background:transparent!important;backdrop-filter:none!important;border-color:transparent!important;}
+html.dream-skin-active [data-tree-group="grp-main"]{background:transparent!important;border-color:transparent!important;}
+html.dream-skin-active [data-composer-target="main"][data-session-anchor="workspace"]{background-color:transparent!important;}
+html.dream-skin-active [data-slot="aui_thread-viewport"]{background:transparent!important;}
+html.dream-skin-active [data-role="user"],html.dream-skin-active [data-slot="aui_assistant-message-root"]{background:transparent!important;backdrop-filter:none!important;}
+html.dream-skin-active [data-slot="composer-surface"]{background:transparent!important;backdrop-filter:none!important;}
+html.dream-skin-active{--ui-chat-surface-background:transparent;--ui-sidebar-surface-background:transparent;}
+@media (prefers-reduced-motion: reduce){
+  html.dream-skin-active *{transition-duration:.01ms!important;scroll-behavior:auto!important;}
+}

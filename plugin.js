@@ -1,6 +1,6 @@
 /**
  * Hermes Dream Skin Plugin
- * Generated at: 2026-07-24T06:46:14.000Z
+ * Generated at: 2026-07-24T07:54:40.221Z
  */
 
 import React from 'react'
@@ -796,6 +796,11 @@ const GLOBAL_RULES_KEY = 'dream-skin:global-rules'
 const THEMES_DIR_KEY = 'dream-skin:themes-dir'
 const PLUGIN_ID = 'hermes-dream-skin'
 
+// 全局规则落盘：默认全局规则文件 + 用户修改后全局规则文件（两者分离）
+const GLOBAL_DIR_NAME = 'global'
+const GLOBAL_DEFAULT_FILE = 'global-default.css'
+const GLOBAL_USER_FILE = 'global-user.css'
+
 /**
  * 读取目录并归一化为入口数组。
  * 依据宿主 hermesDesktop.readDir 的真实签名（见桌面 app src/global.d.ts）：
@@ -826,26 +831,60 @@ async function readFileText(hd, filePath) {
   return result && typeof result.text === 'string' ? result.text : ''
 }
 
+/** 判断目录是否存在（readDir 返回无 error 即视为存在） */
+async function dirExists(hd, dir) {
+  try {
+    const r = await hd.readDir(dir)
+    return !!(r && !r.error && Array.isArray(r.entries))
+  } catch (e) {
+    return false
+  }
+}
+
 /**
  * 解析默认主题目录：插件安装目录下的 themes/。
- *   C:/Users/<user>/AppData/Local/hermes/desktop-plugins/hermes-dream-skin/themes
+ *   <hermesData>/desktop-plugins/hermes-dream-skin/themes
  *
- * ⚠️ 重要：插件作为 ESM 在 Electron 渲染进程 realm 求值（见桌面 app
- * apps/desktop/src/contrib/runtime-loader.ts），默认 contextIsolation 下**没有**
- * Node `process`，且 global.d.ts 未声明 process —— 故 `process.env.USERNAME` 在运行时
- * 大概率取不到。`getPathForFile` 只收 File 对象、`themes` 命名空间是 Marketplace 下载器、
- * 插件 ctx 不暴露路径字段，均无法给出 userData 路径。
- * 因此这里仅作「零成本尽力尝试」：能拿到用户名就用真实路径，拿不到返回 null，
- * 由调用方回退到「用户手动选择」——绝不返回字面量占位（避免用无效路径静默 readDir
- * 失败、列表永远为空）。
+ * 路径来源：宿主 `window.hermesDesktop.getVersion()` 返回的 `hermesRoot`。
+ * 实测 hermesRoot 指向 `.../Local/hermes/hermes-agent`（agent 子目录），而
+ * 插件安装目录 `desktop-plugins` 与 `hermes-agent` 平级（均在 `.../Local/hermes/` 下），
+ * 故标准路径应为：dirname(hermesRoot) + /desktop-plugins/<pluginId>/themes
+ *   = C:/Users/<user>/AppData/Local/hermes/desktop-plugins/hermes-dream-skin/themes
+ *
+ * 为兼容不同安装布局，对两种候选都做 readDir 探测：命中真实存在的即用；
+ * 若都不存在（如尚未部署 themes），默认回退「父目录候选」（最贴近实际结构）。
+ *
+ * ⚠️ 插件作为 ESM 在 Electron 渲染进程 realm 求值，默认 contextIsolation 下没有
+ * Node `process` / `process.env.USERNAME`，故**不能**靠环境变量拼路径。统一从
+ * `getVersion().hermesRoot` 推导，跨用户/跨机器通用。
+ *
+ * 解析失败（getVersion 不可用 / hermesRoot 缺失）返回 null，由调用方回退到
+ * 「用户手动选择文件夹」——绝不返回字面量占位。
  */
 async function resolveDefaultThemesDir() {
   try {
-    if (typeof process !== 'undefined' && (process.env.USERNAME || process.env.USER)) {
-      const user = process.env.USERNAME || process.env.USER
-      return `C:/Users/${user}/AppData/Local/hermes/desktop-plugins/${PLUGIN_ID}/themes`
+    const hd = window.hermesDesktop
+    if (hd && typeof hd.getVersion === 'function') {
+      const ver = await hd.getVersion()
+      const root = ver && ver.hermesRoot
+      if (root && typeof root === 'string' && root.trim()) {
+        const base = root.replace(/\\/g, '/')
+        const parent = base.replace(/\/[^/]+\/?$/, '')
+        // 候选 0：hermesRoot 指向 hermes-agent，desktop-plugins 是其兄弟目录（实际布局）
+        // 候选 1：hermesRoot 本身即 hermes 数据根，desktop-plugins 是其子目录（其他布局）
+        const candidates = [
+          `${parent}/desktop-plugins/${PLUGIN_ID}/themes`,
+          `${base}/desktop-plugins/${PLUGIN_ID}/themes`
+        ]
+        for (const c of candidates) {
+          if (await dirExists(hd, c)) return c
+        }
+        return candidates[0]
+      }
     }
-  } catch (_) { /* process 不可用，忽略 */ }
+  } catch (e) {
+    console.warn('[Dream Skin] 通过 getVersion() 解析主题目录失败：', e)
+  }
   return null
 }
 
@@ -1093,13 +1132,20 @@ class ThemeManager {
     return this.globalRules || DEFAULT_GLOBAL_CSS
   }
 
-  /** 设置并持久化全局规则 CSS */
-  setGlobalRules(css) {
+  /** 设置并持久化全局规则 CSS：写入用户全局规则文件（读取源），并镜像到 storage 兼容 */
+  async setGlobalRules(css) {
     this.globalRules = css || DEFAULT_GLOBAL_CSS
+    // 文件为读取源：写入用户全局规则文件 global-user.css
+    const paths = await this.resolveGlobalFilePaths()
+    if (paths) {
+      await this.ensureDefaultGlobalFile(paths)
+      await this.writeGlobalFile(paths.userFile, this.globalRules)
+    }
+    // 同时镜像到 storage（兼容性；Rescan 会清，但文件是源）
     try {
       this.ctx.storage.set(GLOBAL_RULES_KEY, this.globalRules)
     } catch (e) {
-      console.warn('[Dream Skin] Failed to save global rules:', e)
+      console.warn('[Dream Skin] Failed to save global rules to storage:', e)
     }
   }
 
@@ -1111,46 +1157,27 @@ class ThemeManager {
   }
 
   /**
-   * 恢复系统默认状态：清空自定义主题，仅保留磁盘目录里的预设种子并设为激活。
-   * 安全护栏：若磁盘扫描未返回任何预设（主题目录缺失 / readDir 形态未知 / 未部署 themes 文件夹），
-   * 不破坏当前已加载的主题列表（避免点一下就把列表清空且无法恢复），仅回退全局规则。
-   */
-  /**
-   * 恢复 app 原生状态：移除所有 hermes-dream-skin 的样式修改，
-   * 不套用任何主题（html 不再带 dream-skin-active，注入的 style 全部移除）。
-   * 预设列表保留，用户可随时再选主题重新启用。
+   * 恢复 app 原生状态：清掉所有 storage 缓存（主题列表、激活态、全局规则镜像、目录键），
+   * 使刷新后 boot 从磁盘重新扫描主题、全局规则从磁盘文件（global-user.css）原样加载。
+   *
+   * ⚠️ 设计约定（用户要求）：**不删除、不修改任何磁盘文件**——global-user.css 等保留，
+   * 刷新后 loadGlobalRules() 从磁盘原样读取，全局规则不丢。
+   * 仅停用内存中的激活标记；面板侧会调用 cssInjector.removeTheme/removeGlobal 即时恢复原生外观，
+   * 随后 window.location.reload() 让 boot 从磁盘重建。
    */
   async restoreSystemDefaults() {
-    // 取消激活：清空当前激活主题
+    // 取消激活：清空内存中的激活标记（刷新后无激活 → 原生外观）
     this.activeThemeId = null
-
-    // 全局规则重置为默认（下次套用主题时生效；当前 native 状态下 global 规则无作用域不生效）
-    this.globalRules = DEFAULT_GLOBAL_CSS
-    try {
-      this.ctx.storage.set(GLOBAL_RULES_KEY, DEFAULT_GLOBAL_CSS)
-    } catch (e) {
-      console.warn('[Dream Skin] Failed to save global rules:', e)
-    }
-
-    // 清除已激活主题的持久化，使下次插件启动不再自动套用任何主题
-    try {
-      if (typeof this.ctx.storage.delete === 'function') {
-        this.ctx.storage.delete(ACTIVE_THEME_KEY)
-      } else {
-        this.ctx.storage.set(ACTIVE_THEME_KEY, null)
-      }
-    } catch (e) {
-      console.warn('[Dream Skin] Failed to clear active theme:', e)
-    }
-
-    // 主题列表（预设）保留，仅清空内存中的激活标记
-    this.saveToStorage()
+    // 清所有 storage 缓存键（不动磁盘文件；global-user.css 保留）
+    this.clearAllStorage()
+    // 注意：不再重置磁盘 global-user.css，也不再写 GLOBAL_RULES_KEY 默认值。
+    // 刷新后 loadGlobalRules() 从磁盘原样加载用户全局规则。
   }
 
   /**
    * 清理全部与该插件相关的 storage 缓存键。
-   * 用于「Rescan」场景：在重扫磁盘前把所有缓存（主题列表、激活态、全局规则、目录键）
-   * 一并清掉，随后由调用方把主题文件夹键重新写回，再刷新页面让 boot 从磁盘重建。
+   * 用于「Restore Defaults」场景：清掉主题列表、激活态、全局规则镜像、目录键，
+   * 随后由面板刷新页面让 boot 从磁盘重建；磁盘上的 global-user.css 等不被触碰。
    */
   clearAllStorage() {
     const keys = [STORAGE_KEY, ACTIVE_THEME_KEY, GLOBAL_RULES_KEY, THEMES_DIR_KEY]
@@ -1165,6 +1192,98 @@ class ThemeManager {
         console.warn('[Dream Skin] 清理 storage 键失败：', k, e)
       }
     }
+  }
+
+  /**
+   * 计算全局规则文件的落盘路径。
+   * 约定放在主题目录的「父目录 / global /」下（即插件安装目录 /global/）。
+   * 无法解析主题目录时返回 null（调用方回退到内置默认常量）。
+   */
+  async resolveGlobalFilePaths() {
+    const themesDir = await this.getThemesDir()
+    if (!themesDir) return null
+    const pluginRoot = themesDir.replace(/\/[^/]+\/?$/, '')
+    const dir = `${pluginRoot}/${GLOBAL_DIR_NAME}`
+    return {
+      dir,
+      defaultFile: `${dir}/${GLOBAL_DEFAULT_FILE}`,
+      userFile: `${dir}/${GLOBAL_USER_FILE}`
+    }
+  }
+
+  /** 读取全局规则文件；文件不存在 / 读失败 / 空内容时返回 null */
+  async readGlobalFile(filePath) {
+    const hd = window.hermesDesktop
+    if (!hd || typeof hd.readFileText !== 'function') return null
+    try {
+      const result = await hd.readFileText(filePath)
+      const text = result && typeof result.text === 'string' ? result.text : ''
+      return text && text.trim() ? text : null
+    } catch (e) {
+      return null
+    }
+  }
+
+  /** 写入全局规则文件（父目录缺失时尝试 openDir 兜底建目录再重试） */
+  async writeGlobalFile(filePath, content) {
+    const hd = window.hermesDesktop
+    if (!hd || typeof hd.writeTextFile !== 'function') {
+      console.warn('[Dream Skin] writeTextFile 不可用，无法将全局规则持久化到文件')
+      return false
+    }
+    try {
+      await hd.writeTextFile(filePath, content)
+      return true
+    } catch (e) {
+      // 父目录可能不存在：尝试 openDir 建目录后重试一次
+      if (hd.openDir) {
+        try {
+          const paths = await this.resolveGlobalFilePaths()
+          if (paths) {
+            await hd.openDir(paths.dir)
+            await hd.writeTextFile(filePath, content)
+            return true
+          }
+        } catch (e2) {
+          console.warn('[Dream Skin] 写入全局规则文件失败：', filePath, e2)
+        }
+      } else {
+        console.warn('[Dream Skin] 写入全局规则文件失败：', filePath, e)
+      }
+      return false
+    }
+  }
+
+  /** 确保默认全局规则文件存在（不存在则写入内置 DEFAULT_GLOBAL_CSS） */
+  async ensureDefaultGlobalFile(paths) {
+    const existing = await this.readGlobalFile(paths.defaultFile)
+    if (existing) return
+    await this.writeGlobalFile(paths.defaultFile, DEFAULT_GLOBAL_CSS)
+  }
+
+  /**
+   * 从文件加载全局规则（文件为读取源）：
+   *   用户文件（global-user.css）存在且非空 → 用用户版；
+   *   否则用默认文件（global-default.css）；
+   *   再否则回退内置 DEFAULT_GLOBAL_CSS 常量。
+   * 启动时调用一次，随后 getGlobalRules() 返回缓存值。
+   */
+  async loadGlobalRules() {
+    const paths = await this.resolveGlobalFilePaths()
+    if (!paths) {
+      // 无法定位目录（未设置 themes 目录）：回退内置默认
+      this.globalRules = DEFAULT_GLOBAL_CSS
+      return this.globalRules
+    }
+    await this.ensureDefaultGlobalFile(paths)
+    const user = await this.readGlobalFile(paths.userFile)
+    if (user) {
+      this.globalRules = user
+    } else {
+      const def = await this.readGlobalFile(paths.defaultFile)
+      this.globalRules = def || DEFAULT_GLOBAL_CSS
+    }
+    return this.globalRules
   }
 
   /** 保存主题配置到 PluginStorage */
@@ -2104,47 +2223,49 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
     }
   }
 
-  // Rescan 新流程：记住主题文件夹 → 清理所有 storage 缓存 → 把主题文件夹写回缓存 → 刷新页面。
-  // 刷新后插件 boot 会据主题文件夹重新扫描并加载主题（从磁盘全新重建，清掉所有缓存的自定义）。
+  // Rescan：仅重新扫描主题目录（从磁盘发现新增/删除的主题文件夹），
+  // 保留当前激活主题与全局规则，不刷新页面、不动任何 storage 与磁盘文件。
   const handleRescan = async () => {
-    if (!confirm('Rescan will clear all cached themes and reload the page. Continue?')) {
-      return
-    }
     try {
-      // 1. 记住主题文件夹（从 storage 读取当前生效目录）
       const dir = await themeManager.getThemesDir()
       if (!dir) {
         alert('Please click "Select Folder" in the Themes Folder card above, pointing to the themes/ folder under the plugin install directory')
         return
       }
 
-      // 2. 清理所有 storage 缓存（主题、激活态、全局规则、目录键）
-      themeManager.clearAllStorage()
+      // 从磁盘重新扫描并重建主题列表（恢复存储中的激活态，不动全局规则）
+      await themeManager.reloadFromStorage()
+      themeManager.saveToStorage()
 
-      // 3. 把主题文件夹写回缓存（保证刷新后仍指向同一目录）
-      themeManager.setThemesDir(dir)
-      setThemesDir(dir)
+      // 重新套用当前激活主题（保持外观）；若激活主题已从磁盘移除则停用
+      const active = themeManager.getActiveTheme()
+      if (active) {
+        cssInjector.applyTheme(active)
+      } else {
+        cssInjector.removeTheme()
+      }
 
-      // 4. 刷新页面 → 插件 boot 据主题文件夹重新加载主题
-      window.location.reload()
+      refreshThemes()
     } catch (e) {
       console.error('[Dream Skin] rescan failed', e)
       alert(`Rescan failed: ${e.message}`)
     }
   }
 
-  // 恢复 app 原生状态：停用 Dream Skin，移除所有注入样式，回到 app 原生外观
+  // 恢复 app 原生状态：停用主题 + 清所有 storage 缓存 + 刷新页面。
+  // 注意：不删除磁盘文件，global-user.css 等仍保留，刷新后从磁盘原样加载。
   const handleRestoreDefaults = async () => {
-    if (!confirm('Disable Dream Skin and restore the app to its native appearance? This turns off all themes.')) {
+    if (!confirm('Disable Dream Skin, clear all cached settings and reload? Your global rules file (global-user.css) is preserved on disk.')) {
       return
     }
     try {
+      // 清所有 storage 缓存（主题、激活态、全局规则镜像、目录键），不动磁盘文件
       await themeManager.restoreSystemDefaults()
-      // 立即移除已注入的主题样式与全局规则，恢复原生外观（不再套用任何主题）
+      // 立即移除已注入的主题样式与全局规则，给出原生外观的即时反馈
       cssInjector.removeTheme()
       cssInjector.removeGlobal()
-      setView('list')
-      refreshThemes()
+      // 刷新页面 → boot 重新从磁盘扫描主题；全局规则从磁盘原样加载
+      window.location.reload()
     } catch (e) {
       console.error('[Dream Skin] Failed to restore defaults:', e)
     }
@@ -2166,10 +2287,10 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
     setShowGlobalDialog(true)
   }
 
-  // 保存全局规则：持久化并即时重注入
-  const handleSaveGlobal = () => {
+  // 保存全局规则：写入用户全局规则文件（落盘），并即时重注入
+  const handleSaveGlobal = async () => {
     try {
-      themeManager.setGlobalRules(globalDraft)
+      await themeManager.setGlobalRules(globalDraft)
       cssInjector.applyGlobalCSS(globalDraft)
       setShowGlobalDialog(false)
     } catch (e) {
@@ -2196,13 +2317,13 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
           onClick: handleRescan,
           className: BTN,
           style: BTN_STYLE,
-          title: 'Clear all cached themes and reload the page, then re-scan the themes folder'
+          title: 'Re-scan the themes folder for new/removed themes. Keeps your current theme and global rules.'
         }, 'Rescan'),
         React.createElement(Button, {
           onClick: handleRestoreDefaults,
           className: BTN,
           style: BTN_STYLE,
-          title: 'Disable Dream Skin and restore the app to its native appearance'
+          title: 'Disable Dream Skin, clear all cached settings and reload the page. global-user.css is preserved on disk.'
         }, 'Restore Defaults'),
         React.createElement(Button, {
           onClick: handleOpenGlobal,
@@ -2253,7 +2374,7 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
         React.createElement('div', { style: { padding: '16px 18px', flex: 1, overflow: 'auto' } },
           React.createElement('p', {
             style: { fontSize: 12, color: 'var(--ds-muted, #a3aaae)', marginBottom: 10, lineHeight: 1.5 }
-          }, 'These rules are applied on plugin startup and require a theme to be active. They are shared across all themes and are not stored per-theme.'),
+          }, 'These rules are applied on plugin startup and require a theme to be active. They are shared across all themes and saved to a file (global-user.css under the plugin folder), so they survive a Rescan. Reset restores the built-in default.'),
           React.createElement('textarea', {
             value: globalDraft,
             onChange: (e) => setGlobalDraft(e.target.value),
@@ -2576,7 +2697,11 @@ class DreamSkinPlugin {
     // 2. 加载持久化的主题配置（并运行时扫描 themes/ 目录）
     await this.themeManager.loadFromStorage()
 
-    // 3. 注入全局规则（与主题解耦的共享元素级覆盖）：插件启动即生效，
+    // 3. 从文件加载全局规则（默认文件 + 用户修改文件分离落盘），随后注入。
+    //    文件为读取源，必须在 applyGlobalCSS 之前 await 完成。
+    await this.themeManager.loadGlobalRules()
+
+    // 4. 注入全局规则（与主题解耦的共享元素级覆盖）：插件启动即生效，
     //    仅在主题激活（html.dream-skin-active）时显示。后续主题切换不影响它。
     this.cssInjector.applyGlobalCSS(this.themeManager.getGlobalRules())
 

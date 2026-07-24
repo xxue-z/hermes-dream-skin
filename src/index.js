@@ -27,7 +27,11 @@ export class DreamSkinPlugin {
     // 2. 加载持久化的主题配置（并运行时扫描 themes/ 目录）
     await this.themeManager.loadFromStorage()
 
-    // 3. 注入全局规则（与主题解耦的共享元素级覆盖）：插件启动即生效，
+    // 3. 从文件加载全局规则（默认文件 + 用户修改文件分离落盘），随后注入。
+    //    文件为读取源，必须在 applyGlobalCSS 之前 await 完成。
+    await this.themeManager.loadGlobalRules()
+
+    // 4. 注入全局规则（与主题解耦的共享元素级覆盖）：插件启动即生效，
     //    仅在主题激活（html.dream-skin-active）时显示。后续主题切换不影响它。
     this.cssInjector.applyGlobalCSS(this.themeManager.getGlobalRules())
 
