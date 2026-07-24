@@ -175,47 +175,49 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
     }
   }
 
-  // Rescan 新流程：记住主题文件夹 → 清理所有 storage 缓存 → 把主题文件夹写回缓存 → 刷新页面。
-  // 刷新后插件 boot 会据主题文件夹重新扫描并加载主题（从磁盘全新重建，清掉所有缓存的自定义）。
+  // Rescan：仅重新扫描主题目录（从磁盘发现新增/删除的主题文件夹），
+  // 保留当前激活主题与全局规则，不刷新页面、不动任何 storage 与磁盘文件。
   const handleRescan = async () => {
-    if (!confirm('Rescan will clear all cached themes and reload the page. Continue?')) {
-      return
-    }
     try {
-      // 1. 记住主题文件夹（从 storage 读取当前生效目录）
       const dir = await themeManager.getThemesDir()
       if (!dir) {
         alert('Please click "Select Folder" in the Themes Folder card above, pointing to the themes/ folder under the plugin install directory')
         return
       }
 
-      // 2. 清理所有 storage 缓存（主题、激活态、全局规则、目录键）
-      themeManager.clearAllStorage()
+      // 从磁盘重新扫描并重建主题列表（恢复存储中的激活态，不动全局规则）
+      await themeManager.reloadFromStorage()
+      themeManager.saveToStorage()
 
-      // 3. 把主题文件夹写回缓存（保证刷新后仍指向同一目录）
-      themeManager.setThemesDir(dir)
-      setThemesDir(dir)
+      // 重新套用当前激活主题（保持外观）；若激活主题已从磁盘移除则停用
+      const active = themeManager.getActiveTheme()
+      if (active) {
+        cssInjector.applyTheme(active)
+      } else {
+        cssInjector.removeTheme()
+      }
 
-      // 4. 刷新页面 → 插件 boot 据主题文件夹重新加载主题
-      window.location.reload()
+      refreshThemes()
     } catch (e) {
       console.error('[Dream Skin] rescan failed', e)
       alert(`Rescan failed: ${e.message}`)
     }
   }
 
-  // 恢复 app 原生状态：停用 Dream Skin，移除所有注入样式，回到 app 原生外观
+  // 恢复 app 原生状态：停用主题 + 清所有 storage 缓存 + 刷新页面。
+  // 注意：不删除磁盘文件，global-user.css 等仍保留，刷新后从磁盘原样加载。
   const handleRestoreDefaults = async () => {
-    if (!confirm('Disable Dream Skin and restore the app to its native appearance? This turns off all themes.')) {
+    if (!confirm('Disable Dream Skin, clear all cached settings and reload? Your global rules file (global-user.css) is preserved on disk.')) {
       return
     }
     try {
+      // 清所有 storage 缓存（主题、激活态、全局规则镜像、目录键），不动磁盘文件
       await themeManager.restoreSystemDefaults()
-      // 立即移除已注入的主题样式与全局规则，恢复原生外观（不再套用任何主题）
+      // 立即移除已注入的主题样式与全局规则，给出原生外观的即时反馈
       cssInjector.removeTheme()
       cssInjector.removeGlobal()
-      setView('list')
-      refreshThemes()
+      // 刷新页面 → boot 重新从磁盘扫描主题；全局规则从磁盘原样加载
+      window.location.reload()
     } catch (e) {
       console.error('[Dream Skin] Failed to restore defaults:', e)
     }
@@ -237,10 +239,10 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
     setShowGlobalDialog(true)
   }
 
-  // 保存全局规则：持久化并即时重注入
-  const handleSaveGlobal = () => {
+  // 保存全局规则：写入用户全局规则文件（落盘），并即时重注入
+  const handleSaveGlobal = async () => {
     try {
-      themeManager.setGlobalRules(globalDraft)
+      await themeManager.setGlobalRules(globalDraft)
       cssInjector.applyGlobalCSS(globalDraft)
       setShowGlobalDialog(false)
     } catch (e) {
@@ -267,13 +269,13 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
           onClick: handleRescan,
           className: BTN,
           style: BTN_STYLE,
-          title: 'Clear all cached themes and reload the page, then re-scan the themes folder'
+          title: 'Re-scan the themes folder for new/removed themes. Keeps your current theme and global rules.'
         }, 'Rescan'),
         React.createElement(Button, {
           onClick: handleRestoreDefaults,
           className: BTN,
           style: BTN_STYLE,
-          title: 'Disable Dream Skin and restore the app to its native appearance'
+          title: 'Disable Dream Skin, clear all cached settings and reload the page. global-user.css is preserved on disk.'
         }, 'Restore Defaults'),
         React.createElement(Button, {
           onClick: handleOpenGlobal,
@@ -324,7 +326,7 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
         React.createElement('div', { style: { padding: '16px 18px', flex: 1, overflow: 'auto' } },
           React.createElement('p', {
             style: { fontSize: 12, color: 'var(--ds-muted, #a3aaae)', marginBottom: 10, lineHeight: 1.5 }
-          }, 'These rules are applied on plugin startup and require a theme to be active. They are shared across all themes and are not stored per-theme.'),
+          }, 'These rules are applied on plugin startup and require a theme to be active. They are shared across all themes and saved to a file (global-user.css under the plugin folder), so they survive a Rescan. Reset restores the built-in default.'),
           React.createElement('textarea', {
             value: globalDraft,
             onChange: (e) => setGlobalDraft(e.target.value),
