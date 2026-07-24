@@ -13,6 +13,12 @@ import { DEFAULT_GLOBAL_CSS } from '../style-config.js'
 
 const { Button, Input, ScrollArea } = window.__HERMES_PLUGIN_SDK__
 
+// 统一按钮样式：固定底色 #9fb6e4 + 白字 + 12px（所有按钮一致）
+// 注意：宿主 Tailwind 构建会剥离颜色工具类（如 bg-blue-600 / bg-[#...]），
+// 因此底色必须用内联 style 设置，className 只负责形状/间距。
+const BTN = 'rounded-lg px-3 py-1.5 font-medium whitespace-nowrap hover:opacity-90 transition-opacity'
+const BTN_STYLE = { backgroundColor: '#9fb6e4', color: '#ffffff', fontSize: 12 }
+
 export function createPanel({ themeManager, cssInjector }) {
   return React.createElement(DreamSkinPanel, { themeManager, cssInjector })
 }
@@ -35,6 +41,15 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
   // 全局规则弹框状态
   const [showGlobalDialog, setShowGlobalDialog] = React.useState(false)
   const [globalDraft, setGlobalDraft] = React.useState('')
+
+  // 主题目录（路径选择器）：默认指向插件安装目录下的 themes/
+  const [themesDir, setThemesDir] = React.useState('')
+  React.useEffect(() => {
+    themeManager.getThemesDir().then(setThemesDir).catch(() => {})
+  }, [themeManager])
+
+  // 是否尚未设置有效的主题目录（渲染进程无法自动获取 userData，需用户在面板选择）
+  const dirMissing = !themesDir || themesDir.includes('<user>')
 
   // 刷新主题列表
   const refreshThemes = React.useCallback(() => {
@@ -68,22 +83,20 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
     setView('add')
   }
 
-  // 保存新增主题
+  // 保存新增主题（统一入口：始终落盘 themes/<名称>/theme.json）
   const handleSaveNewTheme = async (styles) => {
-    if (!selectedFile || !newThemeName.trim()) {
-      alert('Please enter a theme name and select an image')
+    const name = newThemeName.trim()
+    if (!name) {
+      alert('Please enter a theme name')
       return
     }
-
     try {
-      const theme = await themeManager.createThemeFromImage(selectedFile, {
-        name: newThemeName.trim()
+      const finalStyles = styles || draftRef.current || null
+      const theme = await themeManager.createTheme({
+        name,
+        imageFile: selectedFile || null,
+        styles: finalStyles
       })
-
-      // 如果有自定义样式，保存
-      if (styles) {
-        themeManager.updateThemeStyles(theme.id, styles)
-      }
 
       // 自动切换到新主题
       themeManager.setActiveTheme(theme.id)
@@ -112,7 +125,7 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
   const handleSaveEdit = async (styles) => {
     if (!editingTheme) return
 
-    themeManager.updateThemeStyles(editingTheme.id, styles)
+    await themeManager.updateThemeStyles(editingTheme.id, styles)
 
     // 若更换了背景图，一并保存
     if (editFile) {
@@ -135,25 +148,58 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
     refreshThemes()
   }
 
-  // 重新加载：从 PluginStorage 重新读取主题并重新应用当前激活主题
-  const handleReload = () => {
+  // 选择主题目录（宿主原生文件夹选择器）
+  const handlePickThemesDir = async () => {
     try {
-      themeManager.reloadFromStorage()
+      const hd = window.hermesDesktop
+      if (!hd || typeof hd.selectPaths !== 'function') {
+        alert('Current host does not support folder selection')
+        return
+      }
+      // hermesDesktop.selectPaths 真实签名：
+      //   selectPaths(options?: { title?, defaultPath?, directories?: boolean, multiple?, filters? }) => Promise<string[]>
+      // 选目录必须传 directories: true；返回 string[]（绝对路径数组）。
+      const res = await hd.selectPaths({ title: '选择主题目录', directories: true })
+      const picked = Array.isArray(res) ? res[0] : (typeof res === 'string' ? res : null)
+      if (!picked) return
+      themeManager.setThemesDir(picked)
+      setThemesDir(picked)
+      await handleRescan()
+    } catch (e) {
+      console.error('[Dream Skin] pick themes dir failed', e)
+      alert(`Failed to select folder: ${e.message}`)
+    }
+  }
+
+  // 合并「重新扫描 + Reload」：以主题目录为单一数据源，重扫磁盘 + 重载 Storage + 重新应用当前主题。
+  // 改路径、新增主题、或外部手动放入主题文件夹后，点此即可生效；选中文件夹后也会自动调用。
+  const handleRescan = async () => {
+    try {
+      // 从管理器读取真实生效目录（避免依赖可能过期的前端 state 闭包）
+      const dir = await themeManager.getThemesDir()
+      if (!dir) {
+        alert('Please click "Select Folder" in the Themes Folder card above, pointing to the themes/ folder under the plugin install directory')
+        return
+      }
+      themeManager.setThemesDir(dir)
+      setThemesDir(dir)
+      await themeManager.reloadFromStorage()
       const active = themeManager.getActiveTheme()
       if (active) cssInjector.applyTheme(active)
       refreshThemes()
     } catch (e) {
-      console.error('[Dream Skin] Failed to reload:', e)
+      console.error('[Dream Skin] rescan/reload failed', e)
+      alert(`重新加载失败: ${e.message}`)
     }
   }
 
   // 恢复系统默认状态：清空自定义主题，仅保留系统预设
-  const handleRestoreDefaults = () => {
+  const handleRestoreDefaults = async () => {
     if (!confirm('Restore system default themes? This will remove all custom themes.')) {
       return
     }
     try {
-      themeManager.restoreSystemDefaults()
+      await themeManager.restoreSystemDefaults()
       const active = themeManager.getActiveTheme()
       if (active) cssInjector.applyTheme(active)
       // 全局规则一并重置为默认并即时重注入
@@ -204,21 +250,25 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
       React.createElement('div', { className: 'flex items-center gap-2' },
         React.createElement(Button, {
           onClick: handleStartAdd,
-          className: 'text-sm'
+          className: BTN,
+          style: BTN_STYLE
         }, 'Add Theme'),
         React.createElement(Button, {
-          onClick: handleReload,
-          className: 'text-sm',
-          title: 'Reload themes from storage and re-apply the active theme'
-        }, 'Reload'),
+          onClick: handleRescan,
+          className: BTN,
+          style: BTN_STYLE,
+          title: 'Rescan themes folder and reload (merged Reload)'
+        }, 'Rescan'),
         React.createElement(Button, {
           onClick: handleRestoreDefaults,
-          className: 'text-sm',
+          className: BTN,
+          style: BTN_STYLE,
           title: 'Remove all custom themes and restore system default presets'
         }, 'Restore Defaults'),
         React.createElement(Button, {
           onClick: handleOpenGlobal,
-          className: 'text-sm',
+          className: BTN,
+          style: BTN_STYLE,
           title: 'View and edit global rules applied on plugin startup (shared across all themes)'
         }, 'Global Rules')
       )
@@ -286,14 +336,14 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
           }
         },
           React.createElement(Button, {
-            onClick: handleResetGlobal, className: 'text-sm',
+            onClick: handleResetGlobal, className: BTN, style: BTN_STYLE,
             title: 'Reset global rules to default'
           }, 'Reset'),
           React.createElement(Button, {
-            onClick: () => setShowGlobalDialog(false), className: 'text-sm'
+            onClick: () => setShowGlobalDialog(false), className: BTN, style: BTN_STYLE
           }, 'Cancel'),
           React.createElement(Button, {
-            onClick: handleSaveGlobal, className: 'text-sm'
+            onClick: handleSaveGlobal, className: BTN, style: BTN_STYLE
           }, 'Save')
         )
       )
@@ -302,12 +352,36 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
     // 列表视图
     view === 'list' && React.createElement(React.Fragment, null,
 
+      // 主题目录设置（运行时扫描，可改路径）
+      React.createElement('div', {
+        className: 'p-3 mb-3 rounded-lg border border-(--ui-stroke-secondary) space-y-2'
+      },
+        React.createElement('label', { className: 'block text-xs font-medium text-(--ui-text-secondary)' }, 'Themes Folder'),
+        React.createElement('div', { className: 'flex items-center gap-2' },
+          React.createElement(Input, {
+            value: themesDir || '',
+            onChange: (e) => setThemesDir(e.target.value),
+            placeholder: 'C:/Users/<user>/AppData/Local/hermes/desktop-plugins/hermes-dream-skin/themes'
+          }),
+          React.createElement(Button, {
+            onClick: handlePickThemesDir,
+            className: BTN,
+            style: BTN_STYLE
+          }, 'Select Folder')
+        )
+      ),
+
       // 主题列表
-      React.createElement(ScrollArea, { className: 'h-[calc(100vh-180px)]' },
+      React.createElement(ScrollArea, { className: 'h-[calc(100vh-280px)]' },
         React.createElement('div', { className: 'space-y-2' },
           themes.length === 0
-            ? React.createElement('p', { className: 'text-sm text-gray-500 text-center py-8' },
-                'No themes yet. Click "Add Theme" to get started.'
+            ? React.createElement('div', { className: 'text-sm text-(--ui-text-tertiary) text-center py-8 space-y-1' },
+                dirMissing
+                  ? React.createElement(React.Fragment, null,
+                      React.createElement('p', null, '尚未设置主题目录。'),
+                      React.createElement('p', null, '请先在上方「主题路径」选择 themes 文件夹，再点「重新扫描」。')
+                    )
+                  : React.createElement('p', null, 'No themes yet. Click "Add Theme" to get started.')
               )
             : themes.map(theme =>
                 React.createElement(ThemeCard, {
@@ -331,11 +405,13 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
         React.createElement('div', { className: 'flex items-center gap-2' },
           React.createElement('button', {
             onClick: () => handleSaveNewTheme(draftRef.current),
-            className: 'px-3 py-1.5 rounded border border-(--ui-accent) bg-(--ui-accent) text-white hover:opacity-90 text-sm'
+            className: 'px-3 py-1.5 rounded hover:opacity-90 text-sm',
+            style: { backgroundColor: '#9fb6e4', color: '#ffffff', fontSize: 12 }
           }, 'Keep'),
           React.createElement('button', {
             onClick: () => { setNewThemeName(''); setSelectedFile(null); setView('list') },
-            className: 'px-3 py-1.5 rounded border border-(--ui-stroke-secondary) text-(--ui-text-secondary) hover:bg-(--chrome-action-hover) text-sm'
+            className: 'px-3 py-1.5 rounded hover:opacity-90 text-sm',
+            style: { backgroundColor: '#9fb6e4', color: '#ffffff', fontSize: 12 }
           }, 'Cancel')
         )
       ),
@@ -373,11 +449,13 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
         React.createElement('div', { className: 'flex items-center gap-2' },
           React.createElement('button', {
             onClick: () => handleSaveEdit(draftRef.current),
-            className: 'px-3 py-1.5 rounded border border-(--ui-accent) bg-(--ui-accent) text-white hover:opacity-90 text-sm'
+            className: 'px-3 py-1.5 rounded hover:opacity-90 text-sm',
+            style: { backgroundColor: '#9fb6e4', color: '#ffffff', fontSize: 12 }
           }, 'Keep'),
           React.createElement('button', {
             onClick: () => { setView('list'); setEditingTheme(null); setEditFile(null) },
-            className: 'px-3 py-1.5 rounded border border-(--ui-stroke-secondary) text-(--ui-text-secondary) hover:bg-(--chrome-action-hover) text-sm'
+            className: 'px-3 py-1.5 rounded hover:opacity-90 text-sm',
+            style: { backgroundColor: '#9fb6e4', color: '#ffffff', fontSize: 12 }
           }, 'Cancel')
         )
       ),

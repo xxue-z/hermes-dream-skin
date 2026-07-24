@@ -20,12 +20,12 @@ export class DreamSkinPlugin {
     this.disposers = []
   }
 
-  init() {
+  async init() {
     // 1. 初始化 CSS 注入器
     this.cssInjector.init()
 
-    // 2. 加载持久化的主题配置
-    this.themeManager.loadFromStorage()
+    // 2. 加载持久化的主题配置（并运行时扫描 themes/ 目录）
+    await this.themeManager.loadFromStorage()
 
     // 3. 注入全局规则（与主题解耦的共享元素级覆盖）：插件启动即生效，
     //    仅在主题激活（html.dream-skin-active）时显示。后续主题切换不影响它。
