@@ -13,6 +13,7 @@ import { AREA_SELECTORS } from './style-config.js'
 const STYLE_ID = 'hermes-dream-skin-style'
 const GLOBAL_ID = 'hermes-dream-skin-global'
 const CHROME_ID = 'hermes-dream-skin-chrome'
+const CHROME_GRAD_ID = 'hermes-dream-skin-chrome-grad'
 
 export class CSSInjector {
   constructor() {
@@ -20,6 +21,7 @@ export class CSSInjector {
     this.styleEl = null
     this.globalEl = null
     this.chromeEl = null
+    this.gradientEl = null
   }
 
   init() {
@@ -27,6 +29,7 @@ export class CSSInjector {
     this.styleEl = document.getElementById(STYLE_ID)
     this.globalEl = document.getElementById(GLOBAL_ID)
     this.chromeEl = document.getElementById(CHROME_ID)
+    this.gradientEl = document.getElementById(CHROME_GRAD_ID)
   }
 
   /**
@@ -404,54 +407,102 @@ export class CSSInjector {
    * 作为 body.firstChild 插入，不设 z-index / 不设 opacity:0 —— 否则背景会
    * 被放到页面之后或完全不可见（见文档 pitfalls：z-index:-1 / opacity:0 均为坑）。
    *
-   * 底色优先级：渐变 > 背景图 > 纯色；无背景色且无图则不创建层（完全透明）。
-   * 这一层是主题「玻璃蒙板」要模糊 / 透出的对象，也承载渐变与纯色背景本身，
-   * 因此无论主题是否带图都会创建，确保渐变 / 纯色 / 玻璃效果真正可见
-   * （不再依赖被宿主根容器遮盖的 body 背景）。
-   *
-   * 注意：渐变必须优先于背景图——否则 preset 自带 background.jpg 时，
-   * 用户勾选 Enable Gradient 永远不会生效（历史 bug）。
+   * 渐变与背景图关系：
+   *  - 二者可共存（分层叠加）：渐变作为半透明蒙层盖在背景图之上，底层是图、顶层是渐变；
+   *    Gradient Opacity 控制渐变自身透明度（调低 → 透出底图），Background Opacity
+   *    同时作用于两层（调低 → 整块背景淡入 app 原生外观）。
+   *  - 仅渐变（无图）：单层渐变。仅图（无渐变）：单层图。
+   *  - 纯色兜底：bg.color 存在且无图、无渐变时渲染纯色底。
+   * 这一层是主题「玻璃蒙板」要模糊 / 透出的对象，因此无论主题是否带图都会创建，
+   * 确保渐变 / 纯色 / 玻璃效果真正可见（不再依赖被宿主根容器遮盖的 body 背景）。
    */
   injectChrome(theme) {
     if (this.chromeEl) {
       this.chromeEl.remove()
       this.chromeEl = null
     }
+    if (this.gradientEl) {
+      this.gradientEl.remove()
+      this.gradientEl = null
+    }
 
     const bg = theme?.styles?.global?.background
+    const layerOp = (bg?.layerOpacity ?? 100) / 100
 
-    // 底色优先级：渐变 > 背景图 > 纯色
-    // 关键点：启用 Gradient 时必须优先于背景图——否则 preset 自带 background.jpg 时，
-    // 用户勾选 Enable Gradient 永远不会生效（历史 bug）。
-    // 渐变由多色数组 bg.colors 按顺序构建（每个颜色可带内嵌 alpha 控制透明度）。
-    // 兼容旧 preset（gradient:true 但只有单色 color）：降级为 [color, darker]。
-    if (bg?.gradient) {
+    // 构建渐变 paint（多色数组按顺序；兼容旧 preset 单色降级为 [color, darker]）
+    const gradPaint = (() => {
+      if (!bg?.gradient) return null
       const gradColors = (Array.isArray(bg.colors) && bg.colors.length)
         ? bg.colors
         : (bg.color ? [bg.color, this.darkenHex(bg.color, 0.4)] : null)
-      if (gradColors && gradColors.length >= 1) {
-        // 整体渐变透明度：把每个颜色的内嵌 alpha 再乘以 gradientOpacity 系数
-        const gOp = (bg.gradientOpacity ?? 100) / 100
-        const stops = gradColors.map((c) => {
-          const clean = (c || '').replace('#', '')
-          if (clean.length >= 8) {
-            const base = '#' + clean.slice(0, 6)
-            const a = (parseInt(clean.slice(6, 8), 16) / 255) * gOp
-            const ah = Math.round(Math.max(0, Math.min(1, a)) * 255).toString(16).padStart(2, '0')
-            return `${base}${ah}`
-          }
-          const ah = Math.round(Math.max(0, Math.min(1, gOp)) * 255).toString(16).padStart(2, '0')
-          return `${c}${ah}`
-        })
-        // 整层背景透明度：直接作用于 chrome 容器（与每个颜色 alpha 独立）
-        const layerOp = (bg.layerOpacity ?? 100) / 100
-        this._mountChromeLayer(`linear-gradient(135deg, ${stops.join(', ')})`, layerOp)
-        return
-      }
+      if (!gradColors || !gradColors.length) return null
+      // 整体渐变透明度：把每个颜色的内嵌 alpha 再乘以 gradientOpacity 系数
+      const gOp = (bg.gradientOpacity ?? 100) / 100
+      const stops = gradColors.map((c) => {
+        const clean = (c || '').replace('#', '')
+        if (clean.length >= 8) {
+          const base = '#' + clean.slice(0, 6)
+          const a = (parseInt(clean.slice(6, 8), 16) / 255) * gOp
+          const ah = Math.round(Math.max(0, Math.min(1, a)) * 255).toString(16).padStart(2, '0')
+          return `${base}${ah}`
+        }
+        const ah = Math.round(Math.max(0, Math.min(1, gOp)) * 255).toString(16).padStart(2, '0')
+        return `${c}${ah}`
+      })
+      return `linear-gradient(135deg, ${stops.join(', ')})`
+    })()
+
+    // 分层叠加：渐变 + 背景图同时存在 → 图在底、渐变蒙层在上（二者均 position:fixed，
+    // 渐变层 DOM 顺序靠后 → 绘制在图片之上）。Gradient Opacity 控制渐变自身透明度、
+    // 透出底图；Background Opacity 同时作用于两层、整体淡入/淡出 app。
+    if (gradPaint && theme?.image) {
+      const art = theme.art || {}
+      const fx = Math.round((art.focusX ?? 0.5) * 100)
+      const fy = Math.round((art.focusY ?? 0.35) * 100)
+      // 底层：背景图
+      this.chromeEl = document.createElement('div')
+      this.chromeEl.id = CHROME_ID
+      this.chromeEl.setAttribute('aria-hidden', 'true')
+      this.chromeEl.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        pointer-events: none;
+        background-image: url("${theme.image}");
+        background-size: cover;
+        background-position: ${fx}% ${fy}%;
+        background-repeat: no-repeat;
+        opacity: ${layerOp};
+      `
+      document.body.insertBefore(this.chromeEl, document.body.firstChild)
+      // 顶层：渐变蒙层（半透明，盖在图上）
+      this.gradientEl = document.createElement('div')
+      this.gradientEl.id = CHROME_GRAD_ID
+      this.gradientEl.setAttribute('aria-hidden', 'true')
+      this.gradientEl.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        pointer-events: none;
+        background: ${gradPaint};
+        opacity: ${layerOp};
+      `
+      this.chromeEl.after(this.gradientEl)
+      return
     }
 
-    // 背景图
-    if (theme && theme.image) {
+    // 仅渐变（无图）：单层渐变
+    if (gradPaint) {
+      this._mountChromeLayer(gradPaint, layerOp)
+      return
+    }
+
+    // 仅背景图（无渐变）
+    if (theme?.image) {
       const art = theme.art || {}
       const fx = Math.round((art.focusX ?? 0.5) * 100)
       const fy = Math.round((art.focusY ?? 0.35) * 100)
@@ -469,7 +520,7 @@ export class CSSInjector {
         background-size: cover;
         background-position: ${fx}% ${fy}%;
         background-repeat: no-repeat;
-        opacity: ${(bg?.layerOpacity ?? 100) / 100};
+        opacity: ${layerOp};
       `
       document.body.insertBefore(this.chromeEl, document.body.firstChild)
       return
@@ -512,6 +563,11 @@ export class CSSInjector {
     if (this.chromeEl) {
       this.chromeEl.remove()
       this.chromeEl = null
+    }
+
+    if (this.gradientEl) {
+      this.gradientEl.remove()
+      this.gradientEl = null
     }
 
     document.documentElement.classList.remove('dream-skin-active')
