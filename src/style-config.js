@@ -98,7 +98,7 @@ export const DEFAULT_STYLES = {
       size: 14,
       color: '#edf0f1'
     },
-    background: { gradient: false, glass: true, colors: ['#191c22db'] },
+    background: { gradient: false, glass: true, colors: ['#191c22db'], gradientOpacity: 100, layerOpacity: 100 },
     border: { color: '#8298a3', width: 0, radius: 0 }
   },
   areas: {

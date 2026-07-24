@@ -36,8 +36,11 @@ function generatePreviewCSS(draftStyles) {
   lines.push('/* Global Background (fixed full-screen layer) */')
   const bg = global?.background
   if (bg?.gradient && Array.isArray(bg.colors) && bg.colors.length) {
+    const gOp = bg.gradientOpacity ?? 100
+    const lOp = bg.layerOpacity ?? 100
     lines.push(`/* Gradient: ${bg.colors.join(' → ')} */`)
     lines.push(`background-layer: linear-gradient(135deg, ${bg.colors.join(', ')});`)
+    lines.push(`/* Gradient Opacity: ${gOp}% | Background Opacity: ${lOp}% */`)
     if (bg.glass) lines.push(`/* Glass Mask: panels use theme panel color + blur over gradient */`)
   } else if (bg?.color) {
     const effAlpha = cpEffectiveAlpha(bg.color, bg.opacity ?? 86)
@@ -297,6 +300,26 @@ function renderCheckbox(meta, checked, onToggle) {
   )
 }
 
+// 范围滑块（透明度等数值设置）
+function renderRange(meta, value, onInput) {
+  const v = value ?? meta.default ?? 0
+  return React.createElement('div', { className: 'space-y-1' },
+    React.createElement('div', { className: 'flex items-center justify-between' },
+      React.createElement('span', { className: 'text-xs text-gray-600' }, meta.label),
+      React.createElement('span', { className: 'text-xs font-mono text-gray-400' }, `${v}${meta.unit || ''}`)
+    ),
+    React.createElement('input', {
+      type: 'range',
+      min: meta.min ?? 0,
+      max: meta.max ?? 100,
+      step: meta.step ?? 1,
+      value: v,
+      onChange: (e) => onInput(Number(e.target.value)),
+      className: 'w-full'
+    })
+  )
+}
+
 // 由单色派生一个更深的颜色（旧主题迁移用）
 function cpDarkenHex(hex, amt) {
   const clean = (hex || '').replace('#', '').slice(0, 6)
@@ -318,11 +341,34 @@ function cpDarkenHex(hex, amt) {
  * - 未勾选 Gradient 时不显示任何背景色控件（恢复原生 / 透明，玻璃作用于透明底）
  * - Glass Mask 独立于渐变，始终显示
  */
+// 单个渐变颜色行：仅显示色块；鼠标移上去后在色块右侧贴一个删除方块
+function GradientColorRow({ color, hasOpacity, canRemove, onColorChange, onRemove }) {
+  const [hover, setHover] = React.useState(false)
+  return React.createElement('div', {
+    className: 'relative inline-flex items-center',
+    onMouseEnter: () => setHover(true),
+    onMouseLeave: () => setHover(false)
+  },
+    React.createElement(ColorPicker, {
+      value: color,
+      meta: { hasOpacity, compact: true },
+      onChange: onColorChange
+    }),
+    canRemove && hover && React.createElement('button', {
+      onClick: onRemove,
+      title: 'Remove color',
+      'aria-label': 'Remove color',
+      className: 'ml-1 w-5 h-5 rounded-sm flex items-center justify-center text-xs leading-none text-white',
+      style: { backgroundColor: '#ef4444' }
+    }, '×')
+  )
+}
+
 function GlobalBackgroundSection({ config, onChange }) {
   const bg = config || {}
   const gradient = !!bg.gradient
 
-  // 多色数组：优先用已存 colors；旧单色主题迁移为 [color, darker]；否则用默认双色
+  // 多色数组：优先用已存 colors；旧单色主题迁移为 [color, darker]；否则用默认单色
   let colors
   if (Array.isArray(bg.colors) && bg.colors.length) {
     colors = bg.colors
@@ -341,28 +387,30 @@ function GlobalBackgroundSection({ config, onChange }) {
     // 1. Enable Gradient（置顶）
     renderCheckbox(STYLE_METADATA.background.gradient, gradient, (v) => setVal('gradient', v)),
 
-    // 2. 渐变颜色（仅勾选后显示）
+    // 2. 渐变颜色（仅勾选后显示）：只显示色块，hover 出现删除方块
     gradient && React.createElement('div', { className: 'space-y-2 pl-2 border-l border-gray-200 ml-1' },
       React.createElement('div', { className: 'text-xs text-gray-500' }, 'Gradient Colors (top → bottom, in order)'),
-      ...colors.map((c, i) =>
-        React.createElement('div', { key: i, className: 'flex items-center gap-2' },
-          React.createElement('span', { className: 'text-xs text-gray-400 w-4 text-right' }, `${i + 1}`),
-          React.createElement(ColorPicker, {
-            value: c,
-            meta: { hasOpacity: true },
-            onChange: (v) => setColorAt(i, v)
-          }),
-          colors.length > 1 && React.createElement('button', {
-            onClick: () => removeColor(i),
-            className: 'w-6 h-6 rounded text-gray-400 hover:text-red-500 hover:bg-gray-100 flex items-center justify-center text-sm leading-none',
-            'aria-label': 'Remove color'
-          }, '×')
+      React.createElement('div', { className: 'flex flex-wrap items-center gap-2' },
+        ...colors.map((c, i) =>
+          React.createElement(GradientColorRow, {
+            key: i,
+            color: c,
+            hasOpacity: true,
+            canRemove: colors.length > 1,
+            onColorChange: (v) => setColorAt(i, v),
+            onRemove: () => removeColor(i)
+          })
         )
       ),
       React.createElement('button', {
         onClick: addColor,
         className: 'px-2 py-1 text-xs rounded border border-gray-300 text-gray-600 hover:bg-gray-100'
-      }, '+ Add Color')
+      }, '+ Add Color'),
+      // 整体透明度 + 整层透明度
+      React.createElement('div', { className: 'pt-1 space-y-2' },
+        renderRange({ label: 'Gradient Opacity', min: 0, max: 100, unit: '%', default: 100 }, bg.gradientOpacity ?? 100, (v) => setVal('gradientOpacity', v)),
+        renderRange({ label: 'Background Opacity', min: 0, max: 100, unit: '%', default: 100 }, bg.layerOpacity ?? 100, (v) => setVal('layerOpacity', v))
+      )
     ),
 
     // 3. Glass Mask（始终显示，独立于渐变）
@@ -452,7 +500,7 @@ function cpPopoverStyle() {
  *
  * 输出格式：hasOpacity 时返回 #RRGGBBAA，否则返回 #RRGGBB
  */
-function ColorPicker({ value, meta, onChange }) {
+function ColorPicker({ value, meta, onChange, compact }) {
   const hasOpacity = !!meta?.hasOpacity
 
   const parsed = React.useMemo(() => cpParseColor(value), [value])
@@ -513,8 +561,8 @@ function ColorPicker({ value, meta, onChange }) {
         style: { backgroundColor: parsed.hex, opacity: hasOpacity ? parsed.alpha : 1 }
       })
     ),
-    // 颜色值文本
-    React.createElement('span', {
+    // 颜色值文本（compact 模式隐藏，仅显示色块）
+    !compact && React.createElement('span', {
       className: 'text-xs text-gray-400 font-mono flex-shrink-0',
       style: { minWidth: '74px' }
     }, finalValue),
