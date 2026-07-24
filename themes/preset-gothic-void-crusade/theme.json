@@ -10,10 +10,6 @@
     "safeArea": "center",
     "taskMode": "ambient"
   },
-  "palette": {
-    "accent": "#c8a55a",
-    "accentInk": "#0d0d0e"
-  },
   "styles": {
     "global": {
       "font": {
@@ -24,7 +20,7 @@
       "background": {
         "color": "#171513",
         "opacity": 86,
-        "gradient": false,
+        "gradient": true,
         "glass": true
       },
       "border": {

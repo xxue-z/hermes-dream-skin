@@ -70,6 +70,8 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
       themeManager.setActiveTheme(themeId)
       const theme = themeManager.getActiveTheme()
       cssInjector.applyTheme(theme)
+      // 确保全局规则（native 覆盖）随主题一并注入，Restore Defaults 后也能恢复完整外观
+      cssInjector.applyGlobalCSS(themeManager.getGlobalRules())
     } catch (e) {
       console.error('[Dream Skin] Failed to switch theme:', e)
     }
@@ -101,6 +103,7 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
       // 自动切换到新主题
       themeManager.setActiveTheme(theme.id)
       cssInjector.applyTheme(theme)
+      cssInjector.applyGlobalCSS(themeManager.getGlobalRules())
 
       // 重置并返回列表
       setNewThemeName('')
@@ -140,6 +143,7 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
     const active = themeManager.getActiveTheme()
     if (active?.id === editingTheme.id) {
       cssInjector.applyTheme(active)
+      cssInjector.applyGlobalCSS(themeManager.getGlobalRules())
     }
 
     setEditingTheme(null)
@@ -193,17 +197,16 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
     }
   }
 
-  // 恢复系统默认状态：清空自定义主题，仅保留系统预设
+  // 恢复 app 原生状态：停用 Dream Skin，移除所有注入样式，回到 app 原生外观
   const handleRestoreDefaults = async () => {
-    if (!confirm('Restore system default themes? This will remove all custom themes.')) {
+    if (!confirm('Disable Dream Skin and restore the app to its native appearance? This turns off all themes.')) {
       return
     }
     try {
       await themeManager.restoreSystemDefaults()
-      const active = themeManager.getActiveTheme()
-      if (active) cssInjector.applyTheme(active)
-      // 全局规则一并重置为默认并即时重注入
-      cssInjector.applyGlobalCSS(themeManager.getGlobalRules())
+      // 立即移除已注入的主题样式与全局规则，恢复原生外观（不再套用任何主题）
+      cssInjector.removeTheme()
+      cssInjector.removeGlobal()
       setView('list')
       refreshThemes()
     } catch (e) {
@@ -263,7 +266,7 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
           onClick: handleRestoreDefaults,
           className: BTN,
           style: BTN_STYLE,
-          title: 'Remove all custom themes and restore system default presets'
+          title: 'Disable Dream Skin and restore the app to its native appearance'
         }, 'Restore Defaults'),
         React.createElement(Button, {
           onClick: handleOpenGlobal,

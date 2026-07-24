@@ -10,16 +10,12 @@
     "safeArea": "center",
     "taskMode": "ambient"
   },
-  "palette": {
-    "accent": "#8298a3",
-    "accentInk": "#111318"
-  },
   "styles": {
     "global": {
       "font": {
         "family": "\"Segoe UI Variable Text\", \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
         "size": 14,
-        "color": "#edf0f1"
+        "color": "#ffffffff"
       },
       "background": {
         "color": "#191c22",

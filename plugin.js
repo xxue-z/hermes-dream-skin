@@ -1,6 +1,6 @@
 /**
  * Hermes Dream Skin Plugin
- * Generated at: 2026-07-24T03:42:46.780Z
+ * Generated at: 2026-07-24T03:50:59.459Z
  */
 
 import React from 'react'
@@ -956,32 +956,35 @@ class ThemeManager {
    * 安全护栏：若磁盘扫描未返回任何预设（主题目录缺失 / readDir 形态未知 / 未部署 themes 文件夹），
    * 不破坏当前已加载的主题列表（避免点一下就把列表清空且无法恢复），仅回退全局规则。
    */
+  /**
+   * 恢复 app 原生状态：移除所有 hermes-dream-skin 的样式修改，
+   * 不套用任何主题（html 不再带 dream-skin-active，注入的 style 全部移除）。
+   * 预设列表保留，用户可随时再选主题重新启用。
+   */
   async restoreSystemDefaults() {
-    const themesDir = await this.getThemesDir()
-    const seeds = await this.scanFolderSeeds(themesDir)
-    if (!seeds.length) {
-      console.warn('[Dream Skin] Restore Defaults: 未在主题目录扫描到预设，保留当前主题列表。目录 =', themesDir)
-      // 至少把全局规则重置为默认
-      this.globalRules = DEFAULT_GLOBAL_CSS
-      try {
-        this.ctx.storage.set(GLOBAL_RULES_KEY, DEFAULT_GLOBAL_CSS)
-      } catch (e) {
-        console.warn('[Dream Skin] Failed to save global rules:', e)
-      }
-      return
-    }
-    this.themes = new Map()
-    for (const seed of seeds) {
-      this.themes.set(seed.id, { ...seed })
-    }
-    this.activeThemeId = seeds[0].id
-    // 全局规则一并重置为默认
+    // 取消激活：清空当前激活主题
+    this.activeThemeId = null
+
+    // 全局规则重置为默认（下次套用主题时生效；当前 native 状态下 global 规则无作用域不生效）
     this.globalRules = DEFAULT_GLOBAL_CSS
     try {
       this.ctx.storage.set(GLOBAL_RULES_KEY, DEFAULT_GLOBAL_CSS)
     } catch (e) {
       console.warn('[Dream Skin] Failed to save global rules:', e)
     }
+
+    // 清除已激活主题的持久化，使下次插件启动不再自动套用任何主题
+    try {
+      if (typeof this.ctx.storage.delete === 'function') {
+        this.ctx.storage.delete(ACTIVE_THEME_KEY)
+      } else {
+        this.ctx.storage.set(ACTIVE_THEME_KEY, null)
+      }
+    } catch (e) {
+      console.warn('[Dream Skin] Failed to clear active theme:', e)
+    }
+
+    // 主题列表（预设）保留，仅清空内存中的激活标记
     this.saveToStorage()
   }
 
@@ -1670,6 +1673,8 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
       themeManager.setActiveTheme(themeId)
       const theme = themeManager.getActiveTheme()
       cssInjector.applyTheme(theme)
+      // 确保全局规则（native 覆盖）随主题一并注入，Restore Defaults 后也能恢复完整外观
+      cssInjector.applyGlobalCSS(themeManager.getGlobalRules())
     } catch (e) {
       console.error('[Dream Skin] Failed to switch theme:', e)
     }
@@ -1701,6 +1706,7 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
       // 自动切换到新主题
       themeManager.setActiveTheme(theme.id)
       cssInjector.applyTheme(theme)
+      cssInjector.applyGlobalCSS(themeManager.getGlobalRules())
 
       // 重置并返回列表
       setNewThemeName('')
@@ -1740,6 +1746,7 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
     const active = themeManager.getActiveTheme()
     if (active?.id === editingTheme.id) {
       cssInjector.applyTheme(active)
+      cssInjector.applyGlobalCSS(themeManager.getGlobalRules())
     }
 
     setEditingTheme(null)
@@ -1793,17 +1800,16 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
     }
   }
 
-  // 恢复系统默认状态：清空自定义主题，仅保留系统预设
+  // 恢复 app 原生状态：停用 Dream Skin，移除所有注入样式，回到 app 原生外观
   const handleRestoreDefaults = async () => {
-    if (!confirm('Restore system default themes? This will remove all custom themes.')) {
+    if (!confirm('Disable Dream Skin and restore the app to its native appearance? This turns off all themes.')) {
       return
     }
     try {
       await themeManager.restoreSystemDefaults()
-      const active = themeManager.getActiveTheme()
-      if (active) cssInjector.applyTheme(active)
-      // 全局规则一并重置为默认并即时重注入
-      cssInjector.applyGlobalCSS(themeManager.getGlobalRules())
+      // 立即移除已注入的主题样式与全局规则，恢复原生外观（不再套用任何主题）
+      cssInjector.removeTheme()
+      cssInjector.removeGlobal()
       setView('list')
       refreshThemes()
     } catch (e) {
@@ -1863,7 +1869,7 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
           onClick: handleRestoreDefaults,
           className: BTN,
           style: BTN_STYLE,
-          title: 'Remove all custom themes and restore system default presets'
+          title: 'Disable Dream Skin and restore the app to its native appearance'
         }, 'Restore Defaults'),
         React.createElement(Button, {
           onClick: handleOpenGlobal,
