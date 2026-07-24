@@ -1,6 +1,6 @@
 /**
  * Hermes Dream Skin Plugin
- * Generated at: 2026-07-24T07:54:40.221Z
+ * Generated at: 2026-07-24T08:32:01.096Z
  */
 
 import React from 'react'
@@ -2067,6 +2067,98 @@ const { Button, Input, ScrollArea } = window.__HERMES_PLUGIN_SDK__
 const BTN = 'rounded-lg px-3 py-1.5 font-medium whitespace-nowrap hover:opacity-90 transition-opacity'
 const BTN_STYLE = { backgroundColor: '#9fb6e4', color: '#ffffff', fontSize: 12 }
 
+// 内联 SVG 图标库（Feather 风格，stroke 跟随 currentColor；图标颜色由父按钮 / currentColor 决定，默认灰）
+const ICON_DATA = {
+  // 新增主题
+  plus: [['line', { x1: 12, y1: 5, x2: 12, y2: 19 }], ['line', { x1: 5, y1: 12, x2: 19, y2: 12 }]],
+  // 重新扫描
+  refresh: [
+    ['polyline', { points: '23 4 23 10 17 10' }],
+    ['polyline', { points: '1 20 1 14 7 14' }],
+    ['path', { d: 'M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15' }]
+  ],
+  // 恢复默认（逆时针回退箭头）
+  rotateCcw: [
+    ['polyline', { points: '1 4 1 10 7 10' }],
+    ['path', { d: 'M3.51 15a9 9 0 1 0 2.13-9.36L1 10' }]
+  ],
+  // 全局规则（滑块 / 控制）
+  sliders: [
+    ['line', { x1: 4, y1: 21, x2: 4, y2: 14 }],
+    ['line', { x1: 4, y1: 10, x2: 4, y2: 3 }],
+    ['line', { x1: 12, y1: 21, x2: 12, y2: 12 }],
+    ['line', { x1: 12, y1: 8, x2: 12, y2: 3 }],
+    ['line', { x1: 20, y1: 21, x2: 20, y2: 16 }],
+    ['line', { x1: 20, y1: 12, x2: 20, y2: 3 }],
+    ['line', { x1: 1, y1: 14, x2: 7, y2: 14 }],
+    ['line', { x1: 9, y1: 8, x2: 15, y2: 8 }],
+    ['line', { x1: 17, y1: 16, x2: 23, y2: 16 }]
+  ],
+  // 选择文件夹
+  folder: [['path', { d: 'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z' }]],
+  // 取消（叉）
+  x: [['line', { x1: 18, y1: 6, x2: 6, y2: 18 }], ['line', { x1: 6, y1: 6, x2: 18, y2: 18 }]],
+  // 保留 / 确认（勾）
+  check: [['polyline', { points: '20 6 9 17 4 12' }]],
+  // 编辑（铅笔）
+  edit: [['path', { d: 'M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z' }]],
+  // 删除（垃圾桶）
+  trash: [
+    ['polyline', { points: '3 6 5 6 21 6' }],
+    ['path', { d: 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' }],
+    ['line', { x1: 10, y1: 11, x2: 10, y2: 17 }],
+    ['line', { x1: 14, y1: 11, x2: 14, y2: 17 }]
+  ]
+}
+
+function Icon({ name, size = 16 }) {
+  const data = ICON_DATA[name] || []
+  return React.createElement('svg', {
+    width: size,
+    height: size,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 2,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    'aria-hidden': true,
+    focusable: false
+  }, ...data.map(([tag, props]) => React.createElement(tag, props)))
+}
+
+/**
+ * 图标按钮（纯图标）：默认透明背景、无边框、灰色图标；
+ * 鼠标悬停时显示银灰色背景（--chrome-action-hover）+ 圆角边框（--ui-stroke-secondary）。
+ * 用 React state 管理 hover，避免内联 style 覆盖 :hover 背景（内联优先级高于 class）。
+ */
+function IconButton({ name, title, ariaLabel, onClick, bordered = false, disabled = false }) {
+  const [hover, setHover] = React.useState(false)
+  const showBorder = bordered || hover
+  return React.createElement('button', {
+    type: 'button',
+    onClick: disabled ? undefined : onClick,
+    disabled,
+    title,
+    'aria-label': ariaLabel || title,
+    onMouseEnter: () => setHover(true),
+    onMouseLeave: () => setHover(false),
+    style: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 4,
+      borderRadius: 8,
+      border: showBorder ? '1px solid var(--ui-stroke-secondary)' : '1px solid transparent',
+      background: hover ? 'var(--chrome-action-hover)' : 'transparent',
+      color: disabled ? 'var(--ui-text-quaternary)' : (hover ? '#000000' : '#919295'),
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      opacity: disabled ? 0.45 : 1,
+      transition: 'background-color .15s ease, border-color .15s ease'
+    }
+  }, React.createElement(Icon, { name }))
+}
+
 function createPanel({ themeManager, cssInjector }) {
   return React.createElement(DreamSkinPanel, { themeManager, cssInjector })
 }
@@ -2229,7 +2321,7 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
     try {
       const dir = await themeManager.getThemesDir()
       if (!dir) {
-        alert('Please click "Select Folder" in the Themes Folder card above, pointing to the themes/ folder under the plugin install directory')
+        alert('Please set the themes folder first — use the folder button in the "Themes Folder" card above, pointing to the themes/ folder under the plugin install directory')
         return
       }
 
@@ -2308,29 +2400,25 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
     view === 'list' && React.createElement('div', { className: 'flex items-center justify-between mb-3' },
       React.createElement('h2', { className: 'text-lg font-semibold' }, 'Dream Skin'),
       React.createElement('div', { className: 'flex items-center gap-2' },
-        React.createElement(Button, {
-          onClick: handleStartAdd,
-          className: BTN,
-          style: BTN_STYLE
-        }, 'Add Theme'),
-        React.createElement(Button, {
-          onClick: handleRescan,
-          className: BTN,
-          style: BTN_STYLE,
-          title: 'Re-scan the themes folder for new/removed themes. Keeps your current theme and global rules.'
-        }, 'Rescan'),
-        React.createElement(Button, {
-          onClick: handleRestoreDefaults,
-          className: BTN,
-          style: BTN_STYLE,
-          title: 'Disable Dream Skin, clear all cached settings and reload the page. global-user.css is preserved on disk.'
-        }, 'Restore Defaults'),
-        React.createElement(Button, {
-          onClick: handleOpenGlobal,
-          className: BTN,
-          style: BTN_STYLE,
-          title: 'View and edit global rules applied on plugin startup (shared across all themes)'
-        }, 'Global Rules')
+        React.createElement(IconButton, {
+          name: 'plus', onClick: handleStartAdd,
+          title: 'Add Theme', 'aria-label': 'Add Theme'
+        }),
+        React.createElement(IconButton, {
+          name: 'refresh', onClick: handleRescan,
+          title: 'Rescan the themes folder for new/removed themes (keeps your current theme and global rules)',
+          'aria-label': 'Rescan'
+        }),
+        React.createElement(IconButton, {
+          name: 'rotateCcw', onClick: handleRestoreDefaults,
+          title: 'Restore Defaults — disable Dream Skin, clear cached settings and reload (global-user.css is preserved)',
+          'aria-label': 'Restore Defaults'
+        }),
+        React.createElement(IconButton, {
+          name: 'sliders', onClick: handleOpenGlobal,
+          title: 'Global Rules — view and edit rules applied on plugin startup (shared across all themes)',
+          'aria-label': 'Global Rules'
+        })
       )
     ),
 
@@ -2399,9 +2487,10 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
             onClick: handleResetGlobal, className: BTN, style: BTN_STYLE,
             title: 'Reset global rules to default'
           }, 'Reset'),
-          React.createElement(Button, {
-            onClick: () => setShowGlobalDialog(false), className: BTN, style: BTN_STYLE
-          }, 'Cancel'),
+          React.createElement(IconButton, {
+            name: 'x', onClick: () => setShowGlobalDialog(false),
+            title: 'Cancel', 'aria-label': 'Cancel'
+          }),
           React.createElement(Button, {
             onClick: handleSaveGlobal, className: BTN, style: BTN_STYLE
           }, 'Save')
@@ -2423,11 +2512,10 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
             onChange: (e) => setThemesDir(e.target.value),
             placeholder: 'C:/Users/<user>/AppData/Local/hermes/desktop-plugins/hermes-dream-skin/themes'
           }),
-          React.createElement(Button, {
-            onClick: handlePickThemesDir,
-            className: BTN,
-            style: BTN_STYLE
-          }, 'Select Folder')
+          React.createElement(IconButton, {
+            name: 'folder', onClick: handlePickThemesDir,
+            title: 'Select Folder', 'aria-label': 'Select Folder'
+          })
         )
       ),
 
@@ -2439,9 +2527,9 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
                 dirMissing
                   ? React.createElement(React.Fragment, null,
                       React.createElement('p', null, '尚未设置主题目录。'),
-                      React.createElement('p', null, '请先在上方「主题路径」选择 themes 文件夹，再点「重新扫描」。')
+                      React.createElement('p', null, '请先在上方「主题路径」选择 themes 文件夹，再点重新扫描按钮（刷新图标）。')
                     )
-                  : React.createElement('p', null, 'No themes yet. Click "Add Theme" to get started.')
+                  : React.createElement('p', null, 'No themes yet. Click the + (Add Theme) button to get started.')
               )
             : themes.map(theme =>
                 React.createElement(ThemeCard, {
@@ -2463,16 +2551,14 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
       React.createElement('div', { className: 'flex items-center justify-between' },
         React.createElement('h2', { className: 'text-lg font-semibold' }, 'Add New Theme'),
         React.createElement('div', { className: 'flex items-center gap-2' },
-          React.createElement('button', {
-            onClick: () => handleSaveNewTheme(draftRef.current),
-            className: 'px-3 py-1.5 rounded hover:opacity-90 text-sm',
-            style: { backgroundColor: '#9fb6e4', color: '#ffffff', fontSize: 12 }
-          }, 'Keep'),
-          React.createElement('button', {
-            onClick: () => { setNewThemeName(''); setSelectedFile(null); setView('list') },
-            className: 'px-3 py-1.5 rounded hover:opacity-90 text-sm',
-            style: { backgroundColor: '#9fb6e4', color: '#ffffff', fontSize: 12 }
-          }, 'Cancel')
+          React.createElement(IconButton, {
+            name: 'check', onClick: () => handleSaveNewTheme(draftRef.current),
+            title: 'Keep', 'aria-label': 'Keep'
+          }),
+          React.createElement(IconButton, {
+            name: 'x', onClick: () => { setNewThemeName(''); setSelectedFile(null); setView('list') },
+            title: 'Cancel', 'aria-label': 'Cancel'
+          })
         )
       ),
 
@@ -2507,16 +2593,14 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
       React.createElement('div', { className: 'flex items-center justify-between' },
         React.createElement('h2', { className: 'text-lg font-semibold' }, 'Edit Theme'),
         React.createElement('div', { className: 'flex items-center gap-2' },
-          React.createElement('button', {
-            onClick: () => handleSaveEdit(draftRef.current),
-            className: 'px-3 py-1.5 rounded hover:opacity-90 text-sm',
-            style: { backgroundColor: '#9fb6e4', color: '#ffffff', fontSize: 12 }
-          }, 'Keep'),
-          React.createElement('button', {
-            onClick: () => { setView('list'); setEditingTheme(null); setEditFile(null) },
-            className: 'px-3 py-1.5 rounded hover:opacity-90 text-sm',
-            style: { backgroundColor: '#9fb6e4', color: '#ffffff', fontSize: 12 }
-          }, 'Cancel')
+          React.createElement(IconButton, {
+            name: 'check', onClick: () => handleSaveEdit(draftRef.current),
+            title: 'Keep', 'aria-label': 'Keep'
+          }),
+          React.createElement(IconButton, {
+            name: 'x', onClick: () => { setView('list'); setEditingTheme(null); setEditFile(null) },
+            title: 'Cancel', 'aria-label': 'Cancel'
+          })
         )
       ),
 
@@ -2616,49 +2700,43 @@ function BackgroundImageField({ label, initialPreview, onFile }) {
  * 选中态以边框颜色区分；列表上的按钮统一蓝色背景；「Activate」按钮点击后才正式应用主题。
  */
 function ThemeCard({ theme, isActive, onActivate, onRemove, onEdit }) {
-  // 列表按钮统一蓝色背景（宿主主题变量 --ui-accent）
-  const blueBtn = 'px-2 py-0.5 rounded text-xs transition-colors'
-  const blueStyle = {
-    background: 'var(--ui-accent)',
-    border: '1px solid var(--ui-accent)',
-    color: '#fff'
-  }
-  const blueStyleDisabled = { ...blueStyle, opacity: 0.5, cursor: 'not-allowed' }
-
   return React.createElement('div', {
     className: `relative p-3 rounded-lg border-2 transition-all ${
       isActive ? 'border-(--ui-accent)' : 'border-(--ui-stroke-secondary) hover:border-(--ui-text-tertiary)'
     }`,
     title: isActive ? 'Active theme' : 'Use "Activate" to apply this theme'
   },
-    // 顶部：主题名 + 操作按钮（蓝色背景）
+    // 顶部：主题名 + 操作按钮（图标按钮：默认仅边框无背景，hover 显银灰背景）
     React.createElement('div', { className: 'flex items-center justify-between mb-2' },
       React.createElement('h3', { className: 'font-medium text-sm' }, theme.name),
       React.createElement('div', { className: 'flex gap-1' },
-        // 激活按钮（图标，点击才正式应用主题）
-        React.createElement('button', {
+        // 应用（激活）按钮
+        React.createElement(IconButton, {
+          name: 'check',
+          bordered: true,
           disabled: isActive,
           onClick: (e) => { e.stopPropagation(); if (!isActive) onActivate() },
-          style: isActive ? blueStyleDisabled : blueStyle,
-          className: blueBtn,
-          title: isActive ? 'This theme is active' : 'Activate this theme'
-        }, isActive ? '✓' : '✓'),
+          title: isActive ? 'This theme is active' : 'Activate this theme',
+          ariaLabel: isActive ? 'Active theme' : 'Activate this theme'
+        }),
         // 编辑按钮
-        React.createElement('button', {
+        React.createElement(IconButton, {
+          name: 'edit',
+          bordered: true,
           disabled: isActive,
           onClick: (e) => { e.stopPropagation(); if (!isActive) onEdit() },
-          style: isActive ? blueStyleDisabled : blueStyle,
-          className: blueBtn,
-          title: isActive ? 'Active theme cannot be edited' : 'Edit Styles'
-        }, '✎'),
+          title: isActive ? 'Active theme cannot be edited' : 'Edit Styles',
+          ariaLabel: isActive ? 'Cannot edit active theme' : 'Edit Styles'
+        }),
         // 删除按钮
-        React.createElement('button', {
+        React.createElement(IconButton, {
+          name: 'trash',
+          bordered: true,
           disabled: isActive,
           onClick: (e) => { e.stopPropagation(); if (!isActive) onRemove() },
-          style: isActive ? blueStyleDisabled : blueStyle,
-          className: blueBtn,
-          title: isActive ? 'Active theme cannot be deleted' : 'Delete Theme'
-        }, '×')
+          title: isActive ? 'Active theme cannot be deleted' : 'Delete Theme',
+          ariaLabel: isActive ? 'Cannot delete active theme' : 'Delete Theme'
+        })
       )
     ),
     // 底部：预览图
