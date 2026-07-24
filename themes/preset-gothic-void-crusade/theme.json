@@ -15,7 +15,7 @@
       "font": {
         "family": "\"Segoe UI Variable Text\", \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
         "size": 14,
-        "color": "#edf0f1"
+        "color": "#f0f4ffff"
       },
       "background": {
         "color": "#171513",
