@@ -36,7 +36,8 @@ function generatePreviewCSS(draftStyles) {
   lines.push('/* Global Background (fixed full-screen layer) */')
   if (global?.background?.color) {
     const bg = global.background
-    const pct = Math.round(bg.opacity ?? 86)
+    const effAlpha = cpEffectiveAlpha(bg.color, bg.opacity ?? 86)
+    const pct = Math.round(effAlpha * 100)
     if (bg.glass) {
       lines.push(`/* Glass Mask: panels = ${bg.color} @ ${pct}% + blur */`)
     }
@@ -44,7 +45,7 @@ function generatePreviewCSS(draftStyles) {
       lines.push(`/* Gradient: ${bg.color} → darker */`)
       lines.push(`background-layer: linear-gradient(135deg, ${bg.color}, <darker>);`)
     } else {
-      const alpha = Math.round(((bg.opacity ?? 86) / 100) * 255).toString(16).padStart(2, '0')
+      const alpha = Math.round(effAlpha * 255).toString(16).padStart(2, '0')
       lines.push(`background-layer: ${bg.color}${alpha};`)
     }
   }
@@ -317,6 +318,13 @@ function cpToHex8(hex, alpha) {
   return `${hex}${a.toString(16).padStart(2, '0')}`
 }
 
+// 取有效透明度（0..1）：优先 8 位 hex 内嵌 alpha，否则回退到 fallbackPct
+function cpEffectiveAlpha(value, fallbackPct = 86) {
+  const clean = (value || '').replace('#', '')
+  if (clean.length >= 8) return parseInt(clean.substring(6, 8), 16) / 255
+  return (fallbackPct ?? 86) / 100
+}
+
 // 棋盘格背景（透明色通用指示图案，非主题色，固定中性灰）
 function cpCheckerboard() {
   return {
@@ -470,7 +478,8 @@ function ColorPicker({ value, meta, onChange }) {
       // 确定按钮
       React.createElement('div', { className: 'flex justify-end pt-2 border-t' },
         React.createElement('button', {
-          className: 'px-3 py-1.5 rounded border border-(--ui-accent) bg-(--ui-accent) text-white hover:opacity-90 text-xs',
+          className: 'px-3 py-1.5 rounded text-xs font-medium',
+          style: { backgroundColor: '#9fb6e4', color: '#ffffff' },
           onClick: () => setIsOpen(false)
         }, 'OK')
       )

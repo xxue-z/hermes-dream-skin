@@ -161,7 +161,7 @@ export class CSSInjector {
     // 玻璃与渐变相互独立：渐变控制底色层，玻璃控制面板处理，两者可同时开启。
     const bg = styles.global?.background
     if (bg && bg.color && bg.glass) {
-      const bgOpacity = (bg.opacity ?? 86) / 100
+      const bgOpacity = this.colorAlpha(bg.color, bg.opacity ?? 86)
       const bgColor = bg.color
       const panelBg = `color-mix(in srgb, ${bgColor} ${Math.round(bgOpacity * 100)}%, transparent)`
 
@@ -256,7 +256,7 @@ export class CSSInjector {
       if (config.font?.family) fontDecls.push(`font-family: '${config.font.family}' !important;`)
       if (config.background?.color) {
         const bg = config.background
-        const opacity = (bg.opacity ?? 80) / 100
+        const opacity = this.colorAlpha(bg.color, bg.opacity ?? 80)
         boxDecls.push(`background-color: ${this.hexToRgba(bg.color, opacity)} !important;`)
       }
       if (config.border?.color || config.border?.width !== undefined) {
@@ -316,6 +316,19 @@ export class CSSInjector {
     const g = parseInt(clean.substring(2, 4) || '0', 16)
     const b = parseInt(clean.substring(4, 6) || '0', 16)
     return `rgba(${r}, ${g}, ${b}, ${opacity})`
+  }
+
+  /**
+   * 取背景色透明度（0..1）。
+   * 优先用内嵌的 8 位 hex alpha（颜色选择器直接设置的透明度）；
+   * 否则回退到 legacy 的 opacity 字段（兼容旧主题 / 预设）。
+   */
+  colorAlpha(hex, fallbackPct) {
+    const clean = (hex || '').replace('#', '')
+    if (clean.length >= 8) {
+      return parseInt(clean.substring(6, 8), 16) / 255
+    }
+    return ((fallbackPct ?? 86) / 100)
   }
 
   /**
@@ -389,10 +402,13 @@ export class CSSInjector {
    * 作为 body.firstChild 插入，不设 z-index / 不设 opacity:0 —— 否则背景会
    * 被放到页面之后或完全不可见（见文档 pitfalls：z-index:-1 / opacity:0 均为坑）。
    *
-   * 底色优先级：背景图 > 渐变 > 纯色；无背景色且无图则不创建层（完全透明）。
+   * 底色优先级：渐变 > 背景图 > 纯色；无背景色且无图则不创建层（完全透明）。
    * 这一层是主题「玻璃蒙板」要模糊 / 透出的对象，也承载渐变与纯色背景本身，
    * 因此无论主题是否带图都会创建，确保渐变 / 纯色 / 玻璃效果真正可见
    * （不再依赖被宿主根容器遮盖的 body 背景）。
+   *
+   * 注意：渐变必须优先于背景图——否则 preset 自带 background.jpg 时，
+   * 用户勾选 Enable Gradient 永远不会生效（历史 bug）。
    */
   injectChrome(theme) {
     if (this.chromeEl) {
@@ -402,7 +418,15 @@ export class CSSInjector {
 
     const bg = theme?.styles?.global?.background
 
-    // 背景图优先：保留原有 cover + focus 定位行为
+    // 底色优先级：渐变 > 背景图 > 纯色
+    // 关键点：启用 Gradient 时必须优先于背景图——否则 preset 自带 background.jpg 时，
+    // 用户勾选 Enable Gradient 永远不会生效（历史 bug）。
+    if (bg?.gradient && bg?.color) {
+      this._mountChromeLayer(`linear-gradient(135deg, ${bg.color} 0%, ${this.darkenHex(bg.color, 0.4)} 100%)`)
+      return
+    }
+
+    // 背景图
     if (theme && theme.image) {
       const art = theme.art || {}
       const fx = Math.round((art.focusX ?? 0.5) * 100)
@@ -426,17 +450,14 @@ export class CSSInjector {
       return
     }
 
-    // 渐变 / 纯色底色
-    let paint = null
-    if (bg && bg.color) {
-      if (bg.gradient) {
-        paint = `linear-gradient(135deg, ${bg.color} 0%, ${this.darkenHex(bg.color, 0.4)} 100%)`
-      } else {
-        paint = this.hexToRgba(bg.color, (bg.opacity ?? 86) / 100)
-      }
-    }
+    // 纯色底色
+    const paint = (bg && bg.color) ? this.hexToRgba(bg.color, (bg.opacity ?? 86) / 100) : null
     if (!paint) return
+    this._mountChromeLayer(paint)
+  }
 
+  /** 挂载固定全屏底色层（渐变 / 纯色通用） */
+  _mountChromeLayer(paint) {
     this.chromeEl = document.createElement('div')
     this.chromeEl.id = CHROME_ID
     this.chromeEl.setAttribute('aria-hidden', 'true')
@@ -449,7 +470,6 @@ export class CSSInjector {
       pointer-events: none;
       background: ${paint};
     `
-
     // 插入到 body 第一个子节点之前 → 自然位于所有内容之后（无需 z-index）
     document.body.insertBefore(this.chromeEl, document.body.firstChild)
   }
