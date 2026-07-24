@@ -21,7 +21,10 @@
         "color": "#ddac927d",
         "opacity": 86,
         "gradient": true,
-        "glass": false
+        "glass": false,
+        "colors": [
+          "#f1d7c696"
+        ]
       },
       "border": {
         "color": "#8298a3",

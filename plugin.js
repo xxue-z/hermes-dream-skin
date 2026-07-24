@@ -1,6 +1,6 @@
 /**
  * Hermes Dream Skin Plugin
- * Generated at: 2026-07-24T06:11:32.490Z
+ * Generated at: 2026-07-24T06:25:52.984Z
  */
 
 import React from 'react'
@@ -106,7 +106,7 @@ const DEFAULT_STYLES = {
       size: 14,
       color: '#edf0f1'
     },
-    background: { gradient: false, glass: true, colors: ['#191c22db'], gradientOpacity: 100, layerOpacity: 100 },
+    background: { gradient: false, glass: true, colors: ['#191c22db'], gradientOpacity: 100, layerOpacity: 100, frost: 14 },
     border: { color: '#8298a3', width: 0, radius: 0 }
   },
   areas: {
@@ -130,7 +130,8 @@ const STYLE_METADATA = {
   background: {
     color: { label: 'Background Color', type: 'color', default: '#191c22db', hasOpacity: true },
     gradient: { label: 'Enable Gradient', type: 'checkbox', default: false },
-    glass: { label: 'Glass Mask', type: 'checkbox', default: true }
+    glass: { label: 'Glass Mask', type: 'checkbox', default: true },
+    frost: { label: 'Frost Blur', type: 'range', min: 0, max: 40, unit: 'px', default: 14 }
   },
   border: {
     color: { label: 'Border Color', type: 'color', default: '#333333', hasOpacity: true },
@@ -182,11 +183,11 @@ function generatePreviewCSS(draftStyles) {
     lines.push(`/* Gradient: ${bg.colors.join(' → ')} */`)
     lines.push(`background-layer: linear-gradient(135deg, ${bg.colors.join(', ')});`)
     lines.push(`/* Gradient Opacity: ${gOp}% | Background Opacity: ${lOp}% */`)
-    if (bg.glass) lines.push(`/* Glass Mask: panels use theme panel color + blur over gradient */`)
+    if (bg.glass) lines.push(`/* Glass Mask: panels = theme panel color + blur(${bg.frost ?? 14}px) over gradient */`)
   } else if (bg?.color) {
     const effAlpha = cpEffectiveAlpha(bg.color, bg.opacity ?? 86)
     const pct = Math.round(effAlpha * 100)
-    if (bg.glass) lines.push(`/* Glass Mask: panels = ${bg.color} @ ${pct}% + blur */`)
+    if (bg.glass) lines.push(`/* Glass Mask: panels = ${bg.color} @ ${pct}% + blur(${bg.frost ?? 14}px) */`)
     const alpha = Math.round(effAlpha * 255).toString(16).padStart(2, '0')
     lines.push(`background-layer: ${bg.color}${alpha};`)
   } else {
@@ -555,7 +556,14 @@ function GlobalBackgroundSection({ config, onChange }) {
     ),
 
     // 3. Glass Mask（始终显示，独立于渐变）
-    renderCheckbox(STYLE_METADATA.background.glass, !!bg.glass, (v) => setVal('glass', v))
+    renderCheckbox(STYLE_METADATA.background.glass, !!bg.glass, (v) => setVal('glass', v)),
+
+    // 4. Frost Blur（磨砂质感，仅玻璃开启时生效）
+    bg.glass && renderRange(
+      { label: 'Frost Blur', min: 0, max: 40, unit: 'px', default: 14 },
+      bg.frost ?? 14,
+      (v) => setVal('frost', v)
+    )
   )
 }
 
@@ -1456,12 +1464,19 @@ class CSSInjector {
       const bgOpacity = hasColor ? this.colorAlpha(bg.color, bg.opacity ?? 86) : ((bg.opacity ?? 86) / 100)
       const panelBg = `color-mix(in srgb, ${bgColor} ${Math.round(bgOpacity * 100)}%, transparent)`
 
+      // 磨砂质感（Frost Blur）：单一滑条控制整体模糊强度，保持原有视觉层级
+      // —— 输入框最强、侧栏次之、消息气泡最弱（避免重模糊压文字可读性）。
+      const frost = bg.frost ?? 14
+      const sidebarBlur = Math.max(0, Math.round(frost * 0.85))
+      const msgBlur = Math.max(0, Math.round(frost * 0.3))
+      const composerBlur = Math.max(0, frost)
+
       // 玻璃蒙板：面板半透明 + 模糊，露出底层固定背景层（纯色 / 渐变 / 背景图）
       lines.push(`/* glass mask */`)
       lines.push(`html.dream-skin-active [data-tree-group="grp-sessions"] {`)
       lines.push(`  background: ${panelBg} !important;`)
       lines.push(`  border-color: var(--ds-line) !important;`)
-      lines.push(`  backdrop-filter: blur(12px) saturate(1.05) !important;`)
+      lines.push(`  backdrop-filter: blur(${sidebarBlur}px) saturate(1.05) !important;`)
       lines.push(`}`)
       lines.push(`html.dream-skin-active [data-tree-group="grp-sessions"] nav { background: transparent !important; }`)
       lines.push(`html.dream-skin-active [data-tree-group="grp-sessions"] button:hover { background: color-mix(in srgb, var(--ds-accent) 18%, transparent) !important; }`)
@@ -1471,14 +1486,14 @@ class CSSInjector {
       lines.push(`}`)
       lines.push(`html.dream-skin-active [data-role="user"], html.dream-skin-active [data-slot="aui_assistant-message-root"] {`)
       lines.push(`  background: ${panelBg} !important;`)
-      lines.push(`  backdrop-filter: blur(4px) !important;`)
+      lines.push(`  backdrop-filter: blur(${msgBlur}px) !important;`)
       lines.push(`}`)
       lines.push(`html.dream-skin-active [data-slot="composer-surface"] {`)
       lines.push(`  background: ${panelBg} !important;`)
       lines.push(`  border: 1px solid var(--ds-line) !important;`)
       lines.push(`  border-radius: 18px !important;`)
       lines.push(`  box-shadow: 0 12px 34px color-mix(in srgb, var(--ds-accent) 8%, transparent) !important;`)
-      lines.push(`  backdrop-filter: blur(14px) saturate(1.06) !important;`)
+      lines.push(`  backdrop-filter: blur(${composerBlur}px) saturate(1.06) !important;`)
       lines.push(`}`)
       lines.push(`html.dream-skin-active [data-slot="statusbar"] { background: ${panelBg} !important; }`)
       lines.push(`html.dream-skin-active .dream-home>div:first-child>div:first-child>div:first-child { border: 1px solid var(--ds-line) !important; border-radius: 20px !important; box-shadow: 0 18px 48px color-mix(in srgb, var(--ds-accent) 9%, transparent) !important; }`)
