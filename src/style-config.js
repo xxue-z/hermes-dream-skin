@@ -120,8 +120,7 @@ export const STYLE_METADATA = {
     color: { label: 'Font Color', type: 'color', default: '#ffffff', hasOpacity: true }
   },
   background: {
-    color: { label: 'Background Color', type: 'color', default: '#191c22', hasOpacity: false },
-    opacity: { label: 'Opacity', type: 'range', min: 0, max: 100, unit: '%', default: 86 },
+    color: { label: 'Background Color', type: 'color', default: '#191c22db', hasOpacity: true },
     gradient: { label: 'Enable Gradient', type: 'checkbox', default: false },
     glass: { label: 'Glass Mask', type: 'checkbox', default: true }
   },

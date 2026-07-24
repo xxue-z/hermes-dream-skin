@@ -18,10 +18,10 @@
         "color": "#6e7172f5"
       },
       "background": {
-        "color": "#241b1e",
+        "color": "#ddac927d",
         "opacity": 86,
         "gradient": true,
-        "glass": true
+        "glass": false
       },
       "border": {
         "color": "#8298a3",
