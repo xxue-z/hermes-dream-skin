@@ -160,9 +160,11 @@ export class CSSInjector {
     // 因此这里只负责「玻璃蒙板」下的面板半透明 + 模糊处理；纯色 / 渐变底色见 injectChrome。
     // 玻璃与渐变相互独立：渐变控制底色层，玻璃控制面板处理，两者可同时开启。
     const bg = styles.global?.background
-    if (bg && bg.color && bg.glass) {
-      const bgOpacity = this.colorAlpha(bg.color, bg.opacity ?? 86)
-      const bgColor = bg.color
+    if (bg && bg.glass) {
+      const hasColor = !!bg.color
+      // 无底色（渐变未启用且无背景色）时，玻璃蒙板以主题面板色着色，仍保持半透明 + 模糊
+      const bgColor = hasColor ? bg.color : 'var(--ds-panel)'
+      const bgOpacity = hasColor ? this.colorAlpha(bg.color, bg.opacity ?? 86) : ((bg.opacity ?? 86) / 100)
       const panelBg = `color-mix(in srgb, ${bgColor} ${Math.round(bgOpacity * 100)}%, transparent)`
 
       // 玻璃蒙板：面板半透明 + 模糊，露出底层固定背景层（纯色 / 渐变 / 背景图）
@@ -421,9 +423,16 @@ export class CSSInjector {
     // 底色优先级：渐变 > 背景图 > 纯色
     // 关键点：启用 Gradient 时必须优先于背景图——否则 preset 自带 background.jpg 时，
     // 用户勾选 Enable Gradient 永远不会生效（历史 bug）。
-    if (bg?.gradient && bg?.color) {
-      this._mountChromeLayer(`linear-gradient(135deg, ${bg.color} 0%, ${this.darkenHex(bg.color, 0.4)} 100%)`)
-      return
+    // 渐变由多色数组 bg.colors 按顺序构建（每个颜色可带内嵌 alpha 控制透明度）。
+    // 兼容旧 preset（gradient:true 但只有单色 color）：降级为 [color, darker]。
+    if (bg?.gradient) {
+      const gradColors = (Array.isArray(bg.colors) && bg.colors.length)
+        ? bg.colors
+        : (bg.color ? [bg.color, this.darkenHex(bg.color, 0.4)] : null)
+      if (gradColors && gradColors.length >= 1) {
+        this._mountChromeLayer(`linear-gradient(135deg, ${gradColors.join(', ')})`)
+        return
+      }
     }
 
     // 背景图
