@@ -366,6 +366,26 @@ export class ThemeManager {
     this.saveToStorage()
   }
 
+  /**
+   * 清理全部与该插件相关的 storage 缓存键。
+   * 用于「Rescan」场景：在重扫磁盘前把所有缓存（主题列表、激活态、全局规则、目录键）
+   * 一并清掉，随后由调用方把主题文件夹键重新写回，再刷新页面让 boot 从磁盘重建。
+   */
+  clearAllStorage() {
+    const keys = [STORAGE_KEY, ACTIVE_THEME_KEY, GLOBAL_RULES_KEY, THEMES_DIR_KEY]
+    for (const k of keys) {
+      try {
+        if (typeof this.ctx.storage.delete === 'function') {
+          this.ctx.storage.delete(k)
+        } else {
+          this.ctx.storage.set(k, null)
+        }
+      } catch (e) {
+        console.warn('[Dream Skin] 清理 storage 键失败：', k, e)
+      }
+    }
+  }
+
   /** 保存主题配置到 PluginStorage */
   saveToStorage() {
     try {
