@@ -1,6 +1,6 @@
 /**
  * Hermes Dream Skin Plugin
- * Generated at: 2026-07-24T06:25:52.984Z
+ * Generated at: 2026-07-24T06:39:16.357Z
  */
 
 import React from 'react'
@@ -1661,6 +1661,7 @@ class CSSInjector {
     // 移除旧的样式标签
     if (this.styleEl) {
       this.styleEl.textContent = css
+      this._ensureOrder()
       return
     }
 
@@ -1672,6 +1673,7 @@ class CSSInjector {
 
     // 添加标记类到 html
     document.documentElement.classList.add('dream-skin-active')
+    this._ensureOrder()
   }
 
   /**
@@ -1685,12 +1687,34 @@ class CSSInjector {
     if (!css) return
     if (this.globalEl) {
       this.globalEl.textContent = css
+      this._ensureOrder()
       return
     }
     this.globalEl = document.createElement('style')
     this.globalEl.id = GLOBAL_ID
     this.globalEl.textContent = css
     document.head.appendChild(this.globalEl)
+    this._ensureOrder()
+  }
+
+  /**
+   * 保证 DOM 顺序：全局规则(neutralize)必须位于主题样式「之前」注入。
+   *
+   * 二者对面板(grp-sessions / grp-main / composer-surface 等)的选择器特异性相同
+   * (0,2,1)，同特异性时由源码顺序决胜负：全局规则把面板设为 transparent +
+   * backdrop-filter:none（中性化，移除宿主默认背景/模糊），主题样式再把面板设为
+   * 半透明底色 + 模糊（玻璃蒙板）。主题样式必须位于全局规则「之后」才能覆盖它。
+   *
+   * 否则：Restore Defaults 移除两处 <style> 后，若 applyTheme 先、applyGlobalCSS 后
+   * 重建，全局规则会落在主题样式之后 → 玻璃蒙板被全局规则吃掉，表现为
+   * 「Restore Defaults 后再选主题，毛玻璃消失」。此守护对任意调用顺序都自愈。
+   */
+  _ensureOrder() {
+    if (!this.globalEl || !this.styleEl) return
+    // global 位于 style 之后 → 把 global 移到 style 之前
+    if (this.globalEl.compareDocumentPosition(this.styleEl) & Node.DOCUMENT_POSITION_FOLLOWING) {
+      this.styleEl.parentNode.insertBefore(this.globalEl, this.styleEl)
+    }
   }
 
   /** 移除全局规则样式标签 */
