@@ -34,20 +34,19 @@ function generatePreviewCSS(draftStyles) {
 
   lines.push('')
   lines.push('/* Global Background (fixed full-screen layer) */')
-  if (global?.background?.color) {
-    const bg = global.background
+  const bg = global?.background
+  if (bg?.gradient && Array.isArray(bg.colors) && bg.colors.length) {
+    lines.push(`/* Gradient: ${bg.colors.join(' → ')} */`)
+    lines.push(`background-layer: linear-gradient(135deg, ${bg.colors.join(', ')});`)
+    if (bg.glass) lines.push(`/* Glass Mask: panels use theme panel color + blur over gradient */`)
+  } else if (bg?.color) {
     const effAlpha = cpEffectiveAlpha(bg.color, bg.opacity ?? 86)
     const pct = Math.round(effAlpha * 100)
-    if (bg.glass) {
-      lines.push(`/* Glass Mask: panels = ${bg.color} @ ${pct}% + blur */`)
-    }
-    if (bg.gradient) {
-      lines.push(`/* Gradient: ${bg.color} → darker */`)
-      lines.push(`background-layer: linear-gradient(135deg, ${bg.color}, <darker>);`)
-    } else {
-      const alpha = Math.round(effAlpha * 255).toString(16).padStart(2, '0')
-      lines.push(`background-layer: ${bg.color}${alpha};`)
-    }
+    if (bg.glass) lines.push(`/* Glass Mask: panels = ${bg.color} @ ${pct}% + blur */`)
+    const alpha = Math.round(effAlpha * 255).toString(16).padStart(2, '0')
+    lines.push(`background-layer: ${bg.color}${alpha};`)
+  } else {
+    lines.push(`/* No background (native / transparent) */`)
   }
 
   lines.push('')
@@ -193,15 +192,23 @@ function TabContent({ tabId, draftStyles, onChange, onToggleEnabled }) {
       disabled: isArea && !config.enabled
     }),
 
-    // 背景属性组
-    React.createElement(PropertyGroup, {
-      title: 'Background',
-      category: 'background',
-      config: config.background || {},
-      metadata: STYLE_METADATA.background,
-      onChange: handlePropertyChange,
-      disabled: isArea && !config.enabled
-    }),
+    // 背景属性组（区域：单色；全局：渐变多色，见 GlobalBackgroundSection）
+    React.createElement('div', { className: 'space-y-2' },
+      React.createElement('h4', { className: 'font-medium text-sm text-gray-700 border-b pb-1' }, 'Background'),
+      isArea
+        ? React.createElement(PropertyGroup, {
+            title: '',
+            category: 'background',
+            config: config.background || {},
+            metadata: { color: STYLE_METADATA.background.color, glass: STYLE_METADATA.background.glass },
+            onChange: handlePropertyChange,
+            disabled: isArea && !config.enabled
+          })
+        : React.createElement(GlobalBackgroundSection, {
+            config: config.background || {},
+            onChange: handlePropertyChange
+          })
+    ),
 
     // 边框属性组
     React.createElement(PropertyGroup, {
@@ -222,7 +229,7 @@ function PropertyGroup({ title, category, config, metadata, onChange, disabled }
   return React.createElement('div', {
     className: `space-y-2 ${disabled ? 'opacity-50 pointer-events-none' : ''}`
   },
-    React.createElement('h4', { className: 'font-medium text-sm text-gray-700 border-b pb-1' }, title),
+    title && React.createElement('h4', { className: 'font-medium text-sm text-gray-700 border-b pb-1' }, title),
     React.createElement('div', { className: 'space-y-3' },
       Object.entries(metadata).map(([key, meta]) => {
         const value = config[key] !== undefined ? config[key] : meta.default
@@ -272,6 +279,94 @@ function PropertyGroup({ title, category, config, metadata, onChange, disabled }
         )
       })
     )
+  )
+}
+
+/**
+ * 复选框行（与 PropertyGroup 内渲染一致）
+ */
+function renderCheckbox(meta, checked, onToggle) {
+  return React.createElement('label', { className: 'flex items-center gap-2 cursor-pointer select-none' },
+    React.createElement('input', {
+      type: 'checkbox',
+      checked: !!checked,
+      onChange: (e) => onToggle(e.target.checked),
+      className: 'w-4 h-4'
+    }),
+    React.createElement('span', { className: 'text-xs text-gray-600' }, meta.label)
+  )
+}
+
+// 由单色派生一个更深的颜色（旧主题迁移用）
+function cpDarkenHex(hex, amt) {
+  const clean = (hex || '').replace('#', '').slice(0, 6)
+  if (clean.length < 6) return hex
+  const num = parseInt(clean, 16)
+  let r = (num >> 16) & 0xff, g = (num >> 8) & 0xff, b = num & 0xff
+  r = Math.max(0, Math.round(r * (1 - amt)))
+  g = Math.max(0, Math.round(g * (1 - amt)))
+  b = Math.max(0, Math.round(b * (1 - amt)))
+  return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)
+}
+
+/**
+ * 全局背景编辑区
+ *
+ * - Enable Gradient 置于最上方；勾选后才显示「渐变颜色」多色编辑器
+ * - 颜色可多选，按数组顺序构建 linear-gradient（135deg）
+ * - 每个颜色都带透明度（内嵌 alpha），与 Font / Border 颜色一致
+ * - 未勾选 Gradient 时不显示任何背景色控件（恢复原生 / 透明，玻璃作用于透明底）
+ * - Glass Mask 独立于渐变，始终显示
+ */
+function GlobalBackgroundSection({ config, onChange }) {
+  const bg = config || {}
+  const gradient = !!bg.gradient
+
+  // 多色数组：优先用已存 colors；旧单色主题迁移为 [color, darker]；否则用默认双色
+  let colors
+  if (Array.isArray(bg.colors) && bg.colors.length) {
+    colors = bg.colors
+  } else if (bg.color) {
+    colors = [bg.color, cpDarkenHex(bg.color, 0.4)]
+  } else {
+    colors = ['#191c22db']
+  }
+
+  const setVal = (key, val) => onChange('background', key, val)
+  const setColorAt = (idx, val) => setVal('colors', colors.map((c, i) => (i === idx ? val : c)))
+  const addColor = () => setVal('colors', [...colors, '#3a4150db'])
+  const removeColor = (idx) => setVal('colors', colors.filter((_, i) => i !== idx))
+
+  return React.createElement('div', { className: 'space-y-2' },
+    // 1. Enable Gradient（置顶）
+    renderCheckbox(STYLE_METADATA.background.gradient, gradient, (v) => setVal('gradient', v)),
+
+    // 2. 渐变颜色（仅勾选后显示）
+    gradient && React.createElement('div', { className: 'space-y-2 pl-2 border-l border-gray-200 ml-1' },
+      React.createElement('div', { className: 'text-xs text-gray-500' }, 'Gradient Colors (top → bottom, in order)'),
+      ...colors.map((c, i) =>
+        React.createElement('div', { key: i, className: 'flex items-center gap-2' },
+          React.createElement('span', { className: 'text-xs text-gray-400 w-4 text-right' }, `${i + 1}`),
+          React.createElement(ColorPicker, {
+            value: c,
+            meta: { hasOpacity: true },
+            onChange: (v) => setColorAt(i, v)
+          }),
+          colors.length > 1 && React.createElement('button', {
+            onClick: () => removeColor(i),
+            className: 'w-6 h-6 rounded text-gray-400 hover:text-red-500 hover:bg-gray-100 flex items-center justify-center text-sm leading-none',
+            'aria-label': 'Remove color'
+          }, '×')
+        )
+      ),
+      React.createElement('button', {
+        onClick: addColor,
+        className: 'px-2 py-1 text-xs rounded border border-gray-300 text-gray-600 hover:bg-gray-100'
+      }, '+ Add Color')
+    ),
+
+    // 3. Glass Mask（始终显示，独立于渐变）
+    renderCheckbox(STYLE_METADATA.background.glass, !!bg.glass, (v) => setVal('glass', v))
   )
 }
 
