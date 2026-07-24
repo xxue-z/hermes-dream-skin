@@ -1,6 +1,6 @@
 /**
  * Hermes Dream Skin Plugin
- * Generated at: 2026-07-24T06:39:16.357Z
+ * Generated at: 2026-07-24T06:46:14.000Z
  */
 
 import React from 'react'
@@ -1147,6 +1147,26 @@ class ThemeManager {
     this.saveToStorage()
   }
 
+  /**
+   * 清理全部与该插件相关的 storage 缓存键。
+   * 用于「Rescan」场景：在重扫磁盘前把所有缓存（主题列表、激活态、全局规则、目录键）
+   * 一并清掉，随后由调用方把主题文件夹键重新写回，再刷新页面让 boot 从磁盘重建。
+   */
+  clearAllStorage() {
+    const keys = [STORAGE_KEY, ACTIVE_THEME_KEY, GLOBAL_RULES_KEY, THEMES_DIR_KEY]
+    for (const k of keys) {
+      try {
+        if (typeof this.ctx.storage.delete === 'function') {
+          this.ctx.storage.delete(k)
+        } else {
+          this.ctx.storage.set(k, null)
+        }
+      } catch (e) {
+        console.warn('[Dream Skin] 清理 storage 键失败：', k, e)
+      }
+    }
+  }
+
   /** 保存主题配置到 PluginStorage */
   saveToStorage() {
     try {
@@ -2084,25 +2104,32 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
     }
   }
 
-  // 合并「重新扫描 + Reload」：以主题目录为单一数据源，重扫磁盘 + 重载 Storage + 重新应用当前主题。
-  // 改路径、新增主题、或外部手动放入主题文件夹后，点此即可生效；选中文件夹后也会自动调用。
+  // Rescan 新流程：记住主题文件夹 → 清理所有 storage 缓存 → 把主题文件夹写回缓存 → 刷新页面。
+  // 刷新后插件 boot 会据主题文件夹重新扫描并加载主题（从磁盘全新重建，清掉所有缓存的自定义）。
   const handleRescan = async () => {
+    if (!confirm('Rescan will clear all cached themes and reload the page. Continue?')) {
+      return
+    }
     try {
-      // 从管理器读取真实生效目录（避免依赖可能过期的前端 state 闭包）
+      // 1. 记住主题文件夹（从 storage 读取当前生效目录）
       const dir = await themeManager.getThemesDir()
       if (!dir) {
         alert('Please click "Select Folder" in the Themes Folder card above, pointing to the themes/ folder under the plugin install directory')
         return
       }
+
+      // 2. 清理所有 storage 缓存（主题、激活态、全局规则、目录键）
+      themeManager.clearAllStorage()
+
+      // 3. 把主题文件夹写回缓存（保证刷新后仍指向同一目录）
       themeManager.setThemesDir(dir)
       setThemesDir(dir)
-      await themeManager.reloadFromStorage()
-      const active = themeManager.getActiveTheme()
-      if (active) cssInjector.applyTheme(active)
-      refreshThemes()
+
+      // 4. 刷新页面 → 插件 boot 据主题文件夹重新加载主题
+      window.location.reload()
     } catch (e) {
-      console.error('[Dream Skin] rescan/reload failed', e)
-      alert(`重新加载失败: ${e.message}`)
+      console.error('[Dream Skin] rescan failed', e)
+      alert(`Rescan failed: ${e.message}`)
     }
   }
 
@@ -2169,7 +2196,7 @@ function DreamSkinPanel({ themeManager, cssInjector }) {
           onClick: handleRescan,
           className: BTN,
           style: BTN_STYLE,
-          title: 'Rescan themes folder and reload (merged Reload)'
+          title: 'Clear all cached themes and reload the page, then re-scan the themes folder'
         }, 'Rescan'),
         React.createElement(Button, {
           onClick: handleRestoreDefaults,
