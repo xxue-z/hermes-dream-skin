@@ -334,32 +334,35 @@ export class ThemeManager {
    * 安全护栏：若磁盘扫描未返回任何预设（主题目录缺失 / readDir 形态未知 / 未部署 themes 文件夹），
    * 不破坏当前已加载的主题列表（避免点一下就把列表清空且无法恢复），仅回退全局规则。
    */
+  /**
+   * 恢复 app 原生状态：移除所有 hermes-dream-skin 的样式修改，
+   * 不套用任何主题（html 不再带 dream-skin-active，注入的 style 全部移除）。
+   * 预设列表保留，用户可随时再选主题重新启用。
+   */
   async restoreSystemDefaults() {
-    const themesDir = await this.getThemesDir()
-    const seeds = await this.scanFolderSeeds(themesDir)
-    if (!seeds.length) {
-      console.warn('[Dream Skin] Restore Defaults: 未在主题目录扫描到预设，保留当前主题列表。目录 =', themesDir)
-      // 至少把全局规则重置为默认
-      this.globalRules = DEFAULT_GLOBAL_CSS
-      try {
-        this.ctx.storage.set(GLOBAL_RULES_KEY, DEFAULT_GLOBAL_CSS)
-      } catch (e) {
-        console.warn('[Dream Skin] Failed to save global rules:', e)
-      }
-      return
-    }
-    this.themes = new Map()
-    for (const seed of seeds) {
-      this.themes.set(seed.id, { ...seed })
-    }
-    this.activeThemeId = seeds[0].id
-    // 全局规则一并重置为默认
+    // 取消激活：清空当前激活主题
+    this.activeThemeId = null
+
+    // 全局规则重置为默认（下次套用主题时生效；当前 native 状态下 global 规则无作用域不生效）
     this.globalRules = DEFAULT_GLOBAL_CSS
     try {
       this.ctx.storage.set(GLOBAL_RULES_KEY, DEFAULT_GLOBAL_CSS)
     } catch (e) {
       console.warn('[Dream Skin] Failed to save global rules:', e)
     }
+
+    // 清除已激活主题的持久化，使下次插件启动不再自动套用任何主题
+    try {
+      if (typeof this.ctx.storage.delete === 'function') {
+        this.ctx.storage.delete(ACTIVE_THEME_KEY)
+      } else {
+        this.ctx.storage.set(ACTIVE_THEME_KEY, null)
+      }
+    } catch (e) {
+      console.warn('[Dream Skin] Failed to clear active theme:', e)
+    }
+
+    // 主题列表（预设）保留，仅清空内存中的激活标记
     this.saveToStorage()
   }
 
