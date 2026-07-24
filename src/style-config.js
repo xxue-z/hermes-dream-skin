@@ -98,7 +98,7 @@ export const DEFAULT_STYLES = {
       size: 14,
       color: '#edf0f1'
     },
-    background: { gradient: false, glass: true, colors: ['#191c22db'], gradientOpacity: 100, layerOpacity: 100 },
+    background: { gradient: false, glass: true, colors: ['#191c22db'], gradientOpacity: 100, layerOpacity: 100, frost: 14 },
     border: { color: '#8298a3', width: 0, radius: 0 }
   },
   areas: {
@@ -122,7 +122,8 @@ export const STYLE_METADATA = {
   background: {
     color: { label: 'Background Color', type: 'color', default: '#191c22db', hasOpacity: true },
     gradient: { label: 'Enable Gradient', type: 'checkbox', default: false },
-    glass: { label: 'Glass Mask', type: 'checkbox', default: true }
+    glass: { label: 'Glass Mask', type: 'checkbox', default: true },
+    frost: { label: 'Frost Blur', type: 'range', min: 0, max: 40, unit: 'px', default: 14 }
   },
   border: {
     color: { label: 'Border Color', type: 'color', default: '#333333', hasOpacity: true },

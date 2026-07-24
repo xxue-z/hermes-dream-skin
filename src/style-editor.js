@@ -41,11 +41,11 @@ function generatePreviewCSS(draftStyles) {
     lines.push(`/* Gradient: ${bg.colors.join(' → ')} */`)
     lines.push(`background-layer: linear-gradient(135deg, ${bg.colors.join(', ')});`)
     lines.push(`/* Gradient Opacity: ${gOp}% | Background Opacity: ${lOp}% */`)
-    if (bg.glass) lines.push(`/* Glass Mask: panels use theme panel color + blur over gradient */`)
+    if (bg.glass) lines.push(`/* Glass Mask: panels = theme panel color + blur(${bg.frost ?? 14}px) over gradient */`)
   } else if (bg?.color) {
     const effAlpha = cpEffectiveAlpha(bg.color, bg.opacity ?? 86)
     const pct = Math.round(effAlpha * 100)
-    if (bg.glass) lines.push(`/* Glass Mask: panels = ${bg.color} @ ${pct}% + blur */`)
+    if (bg.glass) lines.push(`/* Glass Mask: panels = ${bg.color} @ ${pct}% + blur(${bg.frost ?? 14}px) */`)
     const alpha = Math.round(effAlpha * 255).toString(16).padStart(2, '0')
     lines.push(`background-layer: ${bg.color}${alpha};`)
   } else {
@@ -414,7 +414,14 @@ function GlobalBackgroundSection({ config, onChange }) {
     ),
 
     // 3. Glass Mask（始终显示，独立于渐变）
-    renderCheckbox(STYLE_METADATA.background.glass, !!bg.glass, (v) => setVal('glass', v))
+    renderCheckbox(STYLE_METADATA.background.glass, !!bg.glass, (v) => setVal('glass', v)),
+
+    // 4. Frost Blur（磨砂质感，仅玻璃开启时生效）
+    bg.glass && renderRange(
+      { label: 'Frost Blur', min: 0, max: 40, unit: 'px', default: 14 },
+      bg.frost ?? 14,
+      (v) => setVal('frost', v)
+    )
   )
 }
 
