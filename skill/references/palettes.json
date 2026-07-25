@@ -1,0 +1,91 @@
+{
+  "note": "Hermes Dream Skin 预设配色卡。供 hermes-theme-generator 技能第 2 问（主要配色方案）使用，是色卡的唯一数据源。colors 含生成 theme.json 所需的完整派生输入（bg/panel/panel2/accent/accentAlt/secondary/highlight/text/muted/line）；未列字段由 generate-theme.mjs 自动补齐。普通用户按 name/mood 选即可，无需懂 hex。",
+  "default": "tech-deep-blue",
+  "palettes": [
+    {
+      "id": "tech-deep-blue",
+      "name": "科技深蓝 + 青绿",
+      "mood": "冷静、专业、科技感，适合代码与文档",
+      "colors": {
+        "bg": "#111318",
+        "panel": "#24262a",
+        "panel2": "#37393d",
+        "accent": "#8298a3",
+        "accentAlt": "#91a4ae",
+        "secondary": "#adbbc2",
+        "highlight": "#687a82",
+        "text": "#edf0f1",
+        "muted": "#7f8285",
+        "line": "rgba(130,152,163,0.24)"
+      }
+    },
+    {
+      "id": "dark-rose",
+      "name": "暗夜玫瑰",
+      "mood": "柔和、浪漫、暗调红粉",
+      "colors": {
+        "bg": "#1a1416",
+        "panel": "#2c2729",
+        "panel2": "#3f3a3b",
+        "accent": "#E25563",
+        "accentAlt": "#e56976",
+        "secondary": "#ea929b",
+        "highlight": "#b5444f",
+        "text": "#f6eef0",
+        "muted": "#888183",
+        "line": "rgba(226,85,99,0.24)"
+      }
+    },
+    {
+      "id": "dark-gold",
+      "name": "暗金米",
+      "mood": "典雅、复古、金米质感",
+      "colors": {
+        "bg": "#0d0d0e",
+        "panel": "#202021",
+        "panel2": "#343435",
+        "accent": "#c8a55a",
+        "accentAlt": "#cfb06e",
+        "secondary": "#d9c18c",
+        "highlight": "#a08448",
+        "text": "#f3ead7",
+        "muted": "#807c73",
+        "line": "rgba(200,165,90,0.24)"
+      }
+    },
+    {
+      "id": "black-purple",
+      "name": "纯黑 + 紫",
+      "mood": "极简、神秘、紫调高对比",
+      "colors": {
+        "bg": "#0b0b0f",
+        "panel": "#1f1f22",
+        "panel2": "#323235",
+        "accent": "#8b7cf6",
+        "accentAlt": "#998cf7",
+        "secondary": "#b2a8f6",
+        "highlight": "#6f63c5",
+        "text": "#ece9f5",
+        "muted": "#7c7a82",
+        "line": "rgba(139,124,246,0.24)"
+      }
+    },
+    {
+      "id": "forest-orange",
+      "name": "墨绿 + 暖橙",
+      "mood": "自然、沉稳、绿底橙点",
+      "colors": {
+        "bg": "#0e1411",
+        "panel": "#212724",
+        "panel2": "#353a37",
+        "accent": "#d98a4b",
+        "accentAlt": "#de9861",
+        "secondary": "#dfb28a",
+        "highlight": "#ae6e3c",
+        "text": "#e9efe9",
+        "muted": "#7c827d",
+        "line": "rgba(217,138,75,0.24)"
+      }
+    }
+  ]
+}
