@@ -14,7 +14,7 @@
     "global": {
       "font": {
         "family": "\"Segoe UI Variable Text\", \"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
-        "size": 14,
+        "size": 18,
         "color": "#6e7172f5"
       },
       "background": {
@@ -52,8 +52,10 @@
         "border": {}
       },
       "bottomBar": {
-        "enabled": false,
-        "font": {},
+        "enabled": true,
+        "font": {
+          "color": "#5e5e5eff"
+        },
         "background": {},
         "border": {}
       }

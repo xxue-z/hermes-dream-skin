@@ -301,6 +301,38 @@ export class CSSInjector {
       }
     }
 
+    // ── 状态栏按钮跟随字体颜色 ──
+    // 宿主给 statusbar 内的 button / a / [role="button"] 用较高特异性 + !important 着色
+    // （取自身 --ui-text-tertiary），普通全局 * {color} 规则（特异性 0,2,1）会被其覆盖，
+    // 造成「底部按钮不跟随主题字体色」。这里把特异性抬到 (0,3,2)（重复类 + 属性选择器 +
+    // 元素选择器），确保压过宿主按钮着色；字体色取「区域设置优先，否则全局设置」。
+    // 仅改 color（不碰 font-family），与全局规则的图标保护原则一致——彩色图标靠
+    // currentColor 继承，color 跟随后图标自然同步，不会渲染成缺失字形。
+    const statusFontColor =
+      (styles.areas?.bottomBar?.enabled && styles.areas?.bottomBar?.font?.color) ||
+      globalFont?.color
+    if (statusFontColor) {
+      lines.push(`/* statusbar buttons follow font color */`)
+      lines.push(`html.dream-skin-active.dream-skin-active [data-slot="statusbar"],`)
+      lines.push(`html.dream-skin-active.dream-skin-active [data-slot="statusbar"] *,`)
+      lines.push(`html.dream-skin-active.dream-skin-active [data-slot="statusbar"] button,`)
+      lines.push(`html.dream-skin-active.dream-skin-active [data-slot="statusbar"] button *,`)
+      lines.push(`html.dream-skin-active.dream-skin-active [data-slot="statusbar"] a,`)
+      lines.push(`html.dream-skin-active.dream-skin-active [data-slot="statusbar"] [role="button"] {`)
+      lines.push(`  color: ${statusFontColor} !important;`)
+      lines.push(`}`)
+    }
+
+    // ── 状态栏抬升层级 ──
+    // footer 默认 position 为 static，z-index 不生效；显式 relative + z-index:1 建立
+    // 堆叠上下文，确保其始终位于兄弟内容（如对话区溢出、遮罩层）之上，不被盖住。
+    // 始终注入（与字体色无关），特异性 (0,2,1) + !important 足够压过宿主默认。
+    lines.push(`/* statusbar raise z-index */`)
+    lines.push(`html.dream-skin-active [data-slot="statusbar"] {`)
+    lines.push(`  position: relative !important;`)
+    lines.push(`  z-index: 1 !important;`)
+    lines.push(`}`)
+
     // 自定义 CSS（最高优先级）
     if (styles.customCSS?.trim()) {
       lines.push(`/* Custom CSS */`)
